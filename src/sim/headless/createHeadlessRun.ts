@@ -19,7 +19,7 @@
  */
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
-import { GENERATION, PHYSICS, PLAYER_SPAWN } from '../../constants/game';
+import { PHYSICS, PLAYER_SPAWN } from '../../constants/game';
 import { getMapDefinition, type MapRegistryId } from '../../maps/registry';
 import { ProceduralMapManager } from '../../systems/map/MapSystem';
 import { ChunkManager } from '../../systems/map/ChunkManager';
@@ -39,7 +39,7 @@ import { resetScoreSystemState } from '../../systems/score/ScoreSystem';
 import { resetGhostRecording } from '../../systems/ghost/GhostRecorder';
 import { initSplitRecordingListener, resetSplitRecording } from '../../systems/ghost/SplitRecorder';
 import { setSegmentFlow } from '../../systems/water/segmentFlow';
-import { clearSegmentBathymetry, unregisterSegmentBathymetry } from '../../systems/water/bathymetrySampler';
+import { clearSegmentBathymetry } from '../../systems/water/bathymetrySampler';
 import { resetErosionFieldForTests } from '../../systems/water/erosionField';
 import { sampleSweStage } from '../../systems/water/sweStageProbe';
 import { loadHazardRuntime } from '../../systems/hazards/hazardSimSystem';
@@ -50,6 +50,7 @@ import { createSimSystems } from '../../experience/simSystems';
 import { createRapierWorldSimSystem } from '../../physics/rapierWorldSimSystem';
 import { createRunnerSimSystem } from '../../vehicles/RunnerVehicle/runnerSimSystem';
 import { createRunnerPhysicsState } from '../../vehicles/RunnerVehicle/hooks/runnerPhysicsState';
+import { createVehicleTunerSimSystem, type TunedBody } from '../../systems/vehicle/vehicleTunerSimSystem';
 import { setProceduralSeedOverride, getProceduralBaseSeed, setVehicleOverride } from '../../utils/runContext';
 import { setActiveUserRiver } from '../../systems/map/userRiverSession';
 import { simCore } from '../core/SimCore';
@@ -57,7 +58,6 @@ import type { RapierBody, RapierNamespace, RapierWorld } from '../../physics/rap
 import { loadHeadlessNative } from './nativeNode';
 import { ObstacleWorld, SegmentWorld } from './segmentWorld';
 import { createHeadlessWater, type HeadlessWater } from './headlessWater';
-import { createHeadlessVehicleTuner, type HeadlessVehicleTuner } from './vehicleTunerFrame';
 import type { WatershedNativeModule } from '../../systems/water/wasmAbi';
 import type { InputSource } from '../../input/InputHub';
 
@@ -79,20 +79,6 @@ export interface HeadlessRunOptions {
    * reach them. A pilot that leaves the centreline does.
    */
   obstacleColliders?: boolean;
-  /**
-   * Behaviours of the page that are bugs, reproduced so a headless run matches it. Each defaults ON:
-   * the point of the harness is the page's own numbers, and the browser smokes (and this pin) fail
-   * the day the page is fixed, which is when the flag flips.
-   */
-  pageQuirks?: {
-    /**
-     * The treadmill renders 10 TrackSegment slots for 7 live segments; the 3 spare ones get no
-     * `segmentId` and TrackSegment defaults it to 0, so their `useGeometries` effect (no meshes → no
-     * bed) runs `unregisterSegmentBathymetry(0)`: the page has no SWE bed under segment 0, ever, on
-     * a fresh pool. (TrackManager.tsx / TrackSegment/index.tsx / hooks/useGeometries.ts.)
-     */
-    spareSlotsDropBedZero?: boolean;
-  };
 }
 
 /** How a headless run's treadmill ended, if it did. */
@@ -115,7 +101,6 @@ export interface HeadlessRun {
   /** The static obstacle colliders, when `obstacleColliders` is on. */
   readonly obstacles: ObstacleWorld | null;
   readonly water: HeadlessWater;
-  readonly tuner: HeadlessVehicleTuner;
   readonly native: WatershedNativeModule;
   readonly runnerState: ReturnType<typeof createRunnerPhysicsState>;
   /** The page's clock for a stepped run: frames taken, and R3F's `elapsedTime` after the last. */
@@ -350,10 +335,6 @@ export async function createHeadlessRun(options: HeadlessRunOptions): Promise<He
   chunk.initializePool();
   syncPool();
   dirty = false;
-  // The pool's spare slots mount after the live ones and take segment 0's bed with them (see pageQuirks).
-  if (options.pageQuirks?.spareSlotsDropBedZero !== false && GENERATION.POOL_SIZE > GENERATION.MAX_ACTIVE_SEGMENTS) {
-    unregisterSegmentBathymetry(0);
-  }
 
   // --- Water --------------------------------------------------------------
   const water = createHeadlessWater(native, quality, body as unknown as RapierBody);
@@ -384,6 +365,14 @@ export async function createHeadlessRun(options: HeadlessRunOptions): Promise<He
       shelfTriggerRef: { current: null },
     }),
   );
+  // TrackManager's `useVehicleTunerSim` (#577 A.2): the tuner right after the vehicle step.
+  simCore.register(
+    createVehicleTunerSimSystem({
+      world: world as unknown as RapierWorld,
+      rapier: RAPIER as unknown as RapierNamespace,
+      getBody: () => body as unknown as TunedBody,
+    }),
+  );
   simCore.ctx.water.stageAt = sampleSweStage;
   simCore.ctx.game = { state: () => useGameStore.getState() };
 
@@ -404,7 +393,6 @@ export async function createHeadlessRun(options: HeadlessRunOptions): Promise<He
     segmentWorld,
     obstacles,
     water,
-    tuner: createHeadlessVehicleTuner(world, RAPIER),
     native,
     runnerState,
     clock: { frame: 0, simTimeSec: 0, elapsed: 0 },

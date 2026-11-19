@@ -7,7 +7,6 @@ import {
   publishVehicleWaterLevel,
   resetVehicleWaterLevelForTests,
 } from '../../../systems/water/vehicleWaterDatum';
-import type { ParticlePool } from '../../../components/particlePool';
 
 function makeDeps(sampleWaterLevel?: () => number | null): RaftPhysicsRuntimeDeps {
   return {
@@ -19,12 +18,10 @@ function makeDeps(sampleWaterLevel?: () => number | null): RaftPhysicsRuntimeDep
     staminaState: { current: { current: 100, regenDelay: 0, isExhausted: false } },
     stunState: { current: { active: false, timer: 0 } },
     forwardBiasTimer: { current: 0 },
-    foamParticles: { spawn: () => {} } as unknown as ParticlePool,
-    shedParticles: { spawn: () => {} } as unknown as ParticlePool,
-    camera: new THREE.PerspectiveCamera(),
+    foamParticles: { spawn: () => {} },
+    shedParticles: { spawn: () => {} },
     controls: { getControls: () => ({}) as never },
     stepWorkerProxy: () => {},
-    currentFov: { current: 75 },
     ...(sampleWaterLevel ? { sampleWaterLevel } : {}),
   };
 }

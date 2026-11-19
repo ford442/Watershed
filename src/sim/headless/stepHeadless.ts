@@ -7,7 +7,7 @@
  *
  *   −100  input hub tick (+ the script's camera look)
  *   −90   SimCore: sample the world into ctx, one fixed step (weather … score,
- *         the Rapier world, the runner)
+ *         the Rapier world, the runner, the vehicle tuner)
  *   0     the runner's camera follow · the water field and its forces · the
  *         splash disturbances · the treadmill (segment entry, generation) ·
  *         the lifecycle's HUD mirror and out-of-bounds check
@@ -122,9 +122,6 @@ export function stepHeadless(run: HeadlessRun, frames: number, input?: HeadlessI
       // 0: the water — field and forces, then the splash disturbances the next frame's field takes.
       run.water.frame(delta, timestamp);
       run.water.splash(body);
-
-      // 0: VehicleTuner's frame (a component on the page, mounted under TrackManager).
-      run.tuner.frame(run.body, delta);
 
       // 0: the treadmill, on the camera the follow just moved.
       const { x, y, z } = run.camera.position;

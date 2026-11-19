@@ -629,11 +629,20 @@ biome detection and its 0.4 s sim-time debounce, which also commits the segment'
 clock, which splits are read off) · 92 `physics-world` (the Rapier world's step, `useRapier().step(SIM_DT)`:
 before/after-step hooks, collision events and the mesh sync run inside it, as in the library's own loop;
 registered by `experience/RapierSimStep.tsx`) · 95 `vehicle-runner` (the runner's physics step,
-`vehicles/RunnerVehicle/runnerSimSystem.ts`, registered by RunnerVehicle for its mount). The list
-lives in `experience/simSystems.ts`; the world and the vehicle register from inside `<Physics>`.
+`vehicles/RunnerVehicle/runnerSimSystem.ts`, registered by RunnerVehicle for its mount) or
+`vehicle-raft` (the raft's, `vehicles/RaftVehicle/raftSimSystem.ts`, registered by `useRaftControls`
+for RaftVehicle's mount; one vehicle is mounted at a time) · 96 `vehicle-tuner` (damping, drift, wall
+riding, the jump-press boost and the speed cap, `systems/vehicle/vehicleTunerSimSystem.ts`, registered
+by TrackManager through `hooks/useVehicleTunerSim`; #577 A.2). The list lives in
+`experience/simSystems.ts`; the world and the vehicles register from inside `<Physics>`.
 
-**The vehicle step (#556 A):** world (92) then runner (95), the order a frame ran them in before, so
-the runner reads the stepped body and its impulses ride the next world step. The step reads the run
+**The vehicle step (#556 A, #577 A):** world (92), then the vehicle (95), then the tuner (96), so the
+vehicle reads the stepped body and its impulses ride the next world step; everything after the sim
+step this frame (camera follow, lifecycle, water forces) reads the tuned body. The raft's step
+(`RaftPhysicsStep.ts` over `raftPhysicsRuntime.ts`, state in `raftPhysicsState.ts`) reads the biome
+through `ctx.game` and hands its paddle impulses to the Rapier worker once that owns the body; its
+particles go to sinks the host passes (none headless), its camera follow and FOV are the host's
+`syncRaftCamera` (`raftCameraSync.ts`), its wet-hull tint a per-frame host effect. The step reads the run
 through `args.game` and calls no presentation: sounds, camera shake and collision bursts go out as
 `vehicle-*` cues on `gameEvents` (`runnerCues.ts` / `raftCues.ts` subscribe them in the vehicle's
 host); the camera follow and FOV kick are the host's per-frame `syncRunnerCamera` /
@@ -653,9 +662,9 @@ host); the camera follow and FOV kick are the host's per-frame `syncRunnerCamera
   from the SimCore entries (`pnpm typecheck`).
 
 **Known Pain:** the sample is taken before the vehicle's own step, so a system sees the body as the
-last step left it (what the vehicle reads at the top of its step). The raft is still a priority-0
-`useFrame` (its step, camera, foam and the worker hull path move in a #556 A follow-up), and so are
-TrackManager's treadmill and the water forces. On a display faster than 60 Hz the world, and the
+last step left it (what the vehicle reads at the top of its step). TrackManager's treadmill, the
+water forces (WaterForceSystem) and the dam's vortex (VortexForceSystem) are still priority-0
+`useFrame`s (#577). On a display faster than 60 Hz the world, and the
 meshes `<Physics>` syncs, now move at the sim rate (the library's own loop interpolated them).
 
 **The headless harness (#556 B, `src/sim/headless/`):** the same step with no browser.
@@ -671,7 +680,7 @@ React; `three` is used only for math and the camera object the runner steers by.
 `stepHeadless(run, frames, input?, { commitEvery? })` is `stepScripted`'s frame without R3F — hub tick
 (−100), SimCore (−90), then the priority-0 work in the order the page mounts it: the runner's camera
 follow, the water (`sweHostFrame` + `applyWaterForces` = WaterForceSystem's body; SplashSystem's
-disturbance gates), VehicleTuner's frame (`vehicleTunerFrame.ts`), the treadmill's
+disturbance gates), the treadmill's
 `ChunkManager.update`, the lifecycle's HUD mirror and out-of-bounds check — on R3F's clock (timestamp
 `simTimeSec + 1e-6`, delta = consecutive timestamps), which is what the SWE step and the force
 turbulence read. `scriptedHeadlessInput(script)` wraps a `?input=script:` / `?replay=` script.
@@ -691,9 +700,8 @@ slower line in the air, a jump when wedged), `ghostPilot` (a `.wsghost` as a scr
 or the cap; the result carries frames, finished, the wipeout's segment / position / cause and the splits).
 **Copies of component bodies** (a headless run cannot mount a component; the pin below
 fails when one drifts from the page): `segmentWorld.ts` (TrackSegment's prop derivations),
-`headlessWater.ts` (WaterForceSystem's and SplashSystem's frame), `vehicleTunerFrame.ts`
-(VehicleTuner, which the page mounts for the runner too: water damping, wall friction, speed cap — it
-leaves the keyboard-only drift / wall boost / Space boost out). The run's store is the real Zustand store
+`headlessWater.ts` (WaterForceSystem's and SplashSystem's frame). The vehicle tuner is not a copy:
+the run registers the page's `vehicle-tuner` system (#577 A.2). The run's store is the real Zustand store
 (`systems/GameState`): ScoreSystem, SplitRecorder and the survival layer still read it directly.
 `scripts/check-dependency-direction.mjs` lets `src/sim/headless/` import any layer and lets nothing but
 tests import it; it is Node-only (`tsconfig.test.json` typechecks it, `check-orphans` skips it).

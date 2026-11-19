@@ -199,13 +199,14 @@ the page prints, with `===`. The page's side is committed under `verification/fi
   and the SWE state checksum at each. Re-record with `node verification/headless_trace.mjs` against
   `pnpm build && pnpm preview` (about ten minutes: SwiftShader renders one frame in ten).
 - `meander_run.wsghost` — the ghost the replay smoke recorded from that script (`pnpm test:replay-smoke`),
-  replayed headless through `replayPlanFromFile`; checksums `9a1952b8 36bb12c6 6280ddeb a4da233b`.
+  replayed headless through `replayPlanFromFile`; checksums `65fcb57e 118b1329 6280ddeb a4da233b`
+  (re-recorded for #577 A; before the segment-0 bed fix they were `9a1952b8 36bb12c6 6280ddeb a4da233b`).
 
 The 24 simulated seconds take about a second of wall time. When the page's gameplay changes on purpose,
-this test fails next to the browser smokes: re-record both sides and say why in the PR. A headless run
-reproduces one page bug on purpose (no SWE bed under segment 0: the pool's spare slots default their
-`segmentId` to 0 and unregister it; `pageQuirks.spareSlotsDropBedZero`); the test shows what the run reads
-without it.
+this test fails next to the browser smokes: re-record both sides and say why in the PR. Until #577 A.3 a
+headless run reproduced one page bug on purpose (no SWE bed under segment 0: the pool's spare slots
+defaulted their `segmentId` to 0 and unregistered it). The page is fixed (`TrackSegment/spareSlot.ts`), the
+quirk flag is gone, and the re-recorded browser run reads the checksums the harness predicted for the fix.
 
 **Pilots (#556 C, `src/sim/headless/pilots/`).** A pilot is a `HeadlessInput` that reads the run and
 drives it, so a map can be proven finishable and a tuning change has a ruler:

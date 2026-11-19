@@ -1,33 +1,35 @@
+/**
+ * raftPhysicsRuntime.ts — the raft's physics helpers, bound to one raft (#577 A.1).
+ *
+ * Store-free and React-free: SimCore's `vehicle-raft` steps them
+ * (RaftPhysicsStep.ts), so a headless run can too. The run state they read
+ * (the biome's calm water) comes in through `deps.currentBiome`, the step's
+ * `ctx.game`; the camera follow and the FOV are the host's (raftCameraSync.ts).
+ */
 import * as THREE from 'three';
-import { useGameStore } from '../../../systems/GameState';
 import { WATER_PHYSICS } from '../../../constants/waterPhysics';
 import {
-  TIPPING, PADDLE, STAMINA, BRAKE, COLLISION, BIAS, CAMERA, SHED,
+  TIPPING, PADDLE, STAMINA, BRAKE, COLLISION, BIAS, SHED,
   type BuoyancyState, type PaddleState, type StaminaState, type StunState, type TippingState,
 } from '../constants';
 import { gameEvents } from '../../../systems/events/GameEvents';
 import type { PlayerControls } from '../../../input/playerControls';
 import type { RapierBody, Vec3Like } from '../../../physics/rapierTypes';
-import type { ParticlePool } from '../../../components/particlePool';
 import { publishRaftSurvival } from '../../../systems/journey/runSession';
-import { getComfort } from '../../../systems/settings/comfortRuntime';
-import { raftTargetFov } from '../../../systems/settings/comfort';
 import { clamp01 } from '../../../math/scalar';
-import { createRng } from '../../../math/random';
+import { createRng, type Rng } from '../../../math/random';
 import { getVehicleWaterLevel } from '../../../systems/water/vehicleWaterDatum';
 
-/** This module's seeded stream (#503 A): draws are reproducible run to run. */
-const random = createRng(0x6e0183eb);
+/** Seed of a raft's particle stream (#503 A): draws are reproducible run to run. */
+export const RAFT_RNG_SEED = 0x6e0183eb;
 
-// Per-step scratch (#503 B): these run inside useFrame every physics step,
-// where `new` is invisible to @react-three/no-new-in-loop.
+// Per-step scratch (#503 B).
 const _euler = new THREE.Euler();
 const _quat = new THREE.Quaternion();
 const _forward = new THREE.Vector3();
 const _right = new THREE.Vector3();
 const _velocity = new THREE.Vector3();
 const _offset = new THREE.Vector3();
-const _cameraTarget = new THREE.Vector3();
 const IDENTITY_ROTATION = { x: 0, y: 0, z: 0, w: 1 } as const;
 
 /** The body's rotation as a THREE quaternion (scratch — use before the next call). */
@@ -41,6 +43,33 @@ export const FLOATING_SUBMERGED_RATIO = 0.1;
 
 export type RaftImpulse = [number, number, number];
 
+/**
+ * A particle the step spawns (the shape of `components/particlePool`'s
+ * `ParticleSpawn`; the sim may not import a component). The host passes its
+ * pools; a headless run passes a sink that drops them.
+ */
+export interface RaftParticle {
+  x: number;
+  y: number;
+  z: number;
+  vx: number;
+  vy: number;
+  vz: number;
+  life: number;
+  size: number;
+  gravity?: number;
+  r?: number;
+  g?: number;
+  b?: number;
+}
+
+export interface RaftParticleSink {
+  spawn(p: RaftParticle): void;
+}
+
+/** A sink that draws nothing (a headless run). */
+export const NO_RAFT_PARTICLES: RaftParticleSink = { spawn: () => undefined };
+
 export interface RaftPhysicsRuntimeDeps {
   buoyancyState: { current: BuoyancyState };
   tippingState: { current: TippingState };
@@ -48,13 +77,13 @@ export interface RaftPhysicsRuntimeDeps {
   staminaState: { current: StaminaState };
   stunState: { current: StunState };
   forwardBiasTimer: { current: number };
-  /** Paddle foam and the stern/contact shed spray, drawn by ParticlePoolMesh. */
-  foamParticles: ParticlePool;
-  shedParticles: ParticlePool;
-  camera: THREE.Camera;
+  /** Paddle foam and the stern/contact shed spray (ParticlePoolMesh draws the host's). */
+  foamParticles: RaftParticleSink;
+  shedParticles: RaftParticleSink;
   controls: { getControls: () => PlayerControls };
   stepWorkerProxy: (body: RapierBody, delta: number, impulses?: RaftImpulse[]) => void;
-  currentFov: { current: number };
+  /** The run's biome (`ctx.game`): the delta's calm water tips and wobbles less. Default: never calm. */
+  currentBiome?: () => string;
   /**
    * The staged water level over the raft — the datum the hull's buoyancy reads
    * (vehicleWaterDatum.ts); null where no water covers it. Injectable for tests.
@@ -71,6 +100,9 @@ interface RaftRuntimeCtx {
   sampleWaterLevel: () => number | null;
   /** Paddle-economy multipliers from the last survival tick (1 = unaffected). */
   paddleModifiers: { cost: number; regen: number };
+  currentBiome: () => string;
+  /** This raft's particle stream (reseeded by `resetStream`). */
+  random: Rng;
 }
 
 /**
@@ -98,7 +130,7 @@ function applyTurbulence(rt: RaftRuntimeCtx, body: RapierBody, time: number, del
   const vel = body.linvel();
   const speed = Math.sqrt(vel.x * vel.x + vel.z * vel.z);
   const speedFactor = Math.min(1, speed / 5);
-  const calm = useGameStore.getState().currentBiome === 'delta';
+  const calm = rt.currentBiome() === 'delta';
   const amp =
     WATER_PHYSICS.TURBULENCE_AMP *
     speedFactor *
@@ -116,10 +148,10 @@ function applyTurbulence(rt: RaftRuntimeCtx, body: RapierBody, time: number, del
   body.setRotation(_quat.setFromEuler(euler), true);
 }
 
-function applyTippingForce(body: RapierBody, submergedRatio: number, delta: number) {
+function applyTippingForce(rt: RaftRuntimeCtx, body: RapierBody, submergedRatio: number, delta: number) {
   const vel = body.linvel();
   const speed = Math.sqrt(vel.x * vel.x + vel.z * vel.z);
-  const calm = useGameStore.getState().currentBiome === 'delta';
+  const calm = rt.currentBiome() === 'delta';
   const tipThreshold = calm
     ? WATER_PHYSICS.CALM_TIP_THRESHOLD_SPEED
     : WATER_PHYSICS.TIP_THRESHOLD_SPEED;
@@ -339,7 +371,7 @@ function applyPaddleForces(rt: RaftRuntimeCtx, body: RapierBody, delta: number) 
     rt.deps.forwardBiasTimer.current = BIAS.DURATION;
 
     // Spawn foam on both sides
-    if (random() > 0.7) {
+    if (rt.random() > 0.7) {
       spawnFoamParticle(rt, body, 'left');
       spawnFoamParticle(rt, body, 'right');
     }
@@ -372,7 +404,7 @@ function applyPaddleForces(rt: RaftRuntimeCtx, body: RapierBody, delta: number) 
       z: 0
     }, true);
 
-    if (random() > 0.6) {
+    if (rt.random() > 0.6) {
       spawnFoamParticle(rt, body, 'left');
       gameEvents.emit('raft-paddle', { side: 'left' });
     }
@@ -402,7 +434,7 @@ function applyPaddleForces(rt: RaftRuntimeCtx, body: RapierBody, delta: number) 
       z: 0
     }, true);
 
-    if (random() > 0.6) {
+    if (rt.random() > 0.6) {
       spawnFoamParticle(rt, body, 'right');
       gameEvents.emit('raft-paddle', { side: 'right' });
     }
@@ -423,11 +455,11 @@ function spawnFoamParticle(rt: RaftRuntimeCtx, body: RapierBody, side: 'left' | 
     x: pos.x + offset.x,
     y: pos.y + offset.y,
     z: pos.z + offset.z,
-    vx: (random() - 0.5) * 0.5,
-    vy: random() * 0.3,
-    vz: (random() - 0.5) * 0.5,
+    vx: (rt.random() - 0.5) * 0.5,
+    vy: rt.random() * 0.3,
+    vz: (rt.random() - 0.5) * 0.5,
     life: PADDLE.FOAM_LIFETIME,
-    size: 0.15 + random() * 0.1,
+    size: 0.15 + rt.random() * 0.1,
   });
 }
 
@@ -449,22 +481,22 @@ function spawnShedParticle(rt: RaftRuntimeCtx, body: RapierBody) {
 
   // Spawn at the stern (raft moves -Z, so stern is +Z relative to raft)
   const stern = _offset.set(0, -0.1, 1.6).applyQuaternion(rot);
-  const px = pos.x + stern.x + (random() - 0.5) * (0.8 + speedFactor * 0.6); // wider spread at speed
-  const py = pos.y + stern.y + random() * 0.2;
-  const pz = pos.z + stern.z + (random() - 0.5) * (0.4 + speedFactor * 0.3);
+  const px = pos.x + stern.x + (rt.random() - 0.5) * (0.8 + speedFactor * 0.6); // wider spread at speed
+  const py = pos.y + stern.y + rt.random() * 0.2;
+  const pz = pos.z + stern.z + (rt.random() - 0.5) * (0.4 + speedFactor * 0.3);
 
   // Velocity opposes raft motion + slight upward arc, stronger at speed
   const vel = _velocity.set(
-    (random() - 0.5) * (0.6 + speedFactor * 0.8),
-    0.3 + random() * (0.4 + speedFactor * 0.4),
-    0.5 + random() * (0.5 + speedFactor * 0.5),
+    (rt.random() - 0.5) * (0.6 + speedFactor * 0.8),
+    0.3 + rt.random() * (0.4 + speedFactor * 0.4),
+    0.5 + rt.random() * (0.5 + speedFactor * 0.5),
   ).applyQuaternion(rot);
 
   rt.deps.shedParticles.spawn({
     x: px, y: py, z: pz,
     vx: vel.x, vy: vel.y, vz: vel.z,
     life: SHED.LIFETIME,
-    size: SHED.SIZE_BASE + speedFactor * SHED.SIZE_SPEED_SCALE + random() * 0.03,
+    size: SHED.SIZE_BASE + speedFactor * SHED.SIZE_SPEED_SCALE + rt.random() * 0.03,
     gravity: SHED_GRAVITY,
     r: SHED_COLOR.r, g: SHED_COLOR.g, b: SHED_COLOR.b,
   });
@@ -479,17 +511,17 @@ function spawnContactBurst(rt: RaftRuntimeCtx, contactPoint: Vec3Like, impactFor
   const count = Math.floor(COLLISION.CONTACT_BURST_COUNT * forceFactor) + 4;
 
   for (let i = 0; i < count; i++) {
-    const angle = random() * Math.PI * 2;
-    const speed = 1.5 + random() * 3.0 * forceFactor;
+    const angle = rt.random() * Math.PI * 2;
+    const speed = 1.5 + rt.random() * 3.0 * forceFactor;
     rt.deps.shedParticles.spawn({
-      x: contactPoint.x + (random() - 0.5) * 0.4,
+      x: contactPoint.x + (rt.random() - 0.5) * 0.4,
       y: contactPoint.y + 0.1,
-      z: contactPoint.z + (random() - 0.5) * 0.4,
+      z: contactPoint.z + (rt.random() - 0.5) * 0.4,
       vx: Math.cos(angle) * speed,
-      vy: 0.8 + random() * 2.0 * forceFactor,
+      vy: 0.8 + rt.random() * 2.0 * forceFactor,
       vz: Math.sin(angle) * speed,
-      life: SHED.LIFETIME * (0.6 + random() * 0.6),
-      size: SHED.SIZE_BASE * 1.5 + random() * 0.06 * forceFactor,
+      life: SHED.LIFETIME * (0.6 + rt.random() * 0.6),
+      size: SHED.SIZE_BASE * 1.5 + rt.random() * 0.06 * forceFactor,
       gravity: SHED_GRAVITY,
       r: SHED_COLOR.r, g: SHED_COLOR.g, b: SHED_COLOR.b,
     });
@@ -514,42 +546,6 @@ function resetRaft(rt: RaftRuntimeCtx, body: RapierBody) {
 
   rt.deps.tippingState.current.dangerTime = 0;
   rt.deps.tippingState.current.isTipped = false;
-}
-
-function updateCameraFromBody(rt: RaftRuntimeCtx, body: RapierBody) {
-  const pos = body.translation();
-  const vel = body.linvel();
-  const speed = Math.sqrt(vel.x * vel.x + vel.z * vel.z);
-
-  const velLagX = -vel.x * CAMERA.VELOCITY_LAG;
-  const velLagZ = -vel.z * CAMERA.VELOCITY_LAG;
-  const angVel = body.angvel();
-  const leanOffset = -angVel.y * CAMERA.LEAN_FACTOR;
-
-  const targetPos = _cameraTarget.set(
-    pos.x + velLagX + leanOffset,
-    pos.y + CAMERA.BASE_OFFSET_Y,
-    pos.z + CAMERA.BASE_OFFSET_Z + velLagZ
-  );
-  rt.deps.camera.position.lerp(targetPos, CAMERA.LERP_SPEED);
-  rt.deps.camera.lookAt(pos.x, pos.y, pos.z);
-
-  // Base FOV and kick strength are the player's comfort settings (#486 D); the
-  // authored headroom (FOV_MAX − FOV_BASE) still caps the kick.
-  const targetFov = raftTargetFov(
-    speed,
-    CAMERA.FOV_SPEED_REFERENCE,
-    CAMERA.FOV_SPEED_SCALE,
-    CAMERA.FOV_MAX - CAMERA.FOV_BASE,
-    getComfort(),
-  );
-  rt.deps.currentFov.current += (targetFov - rt.deps.currentFov.current) * CAMERA.FOV_LERP;
-  if ('fov' in rt.deps.camera) {
-    (rt.deps.camera as THREE.PerspectiveCamera).fov = rt.deps.currentFov.current;
-    (rt.deps.camera as THREE.PerspectiveCamera).updateProjectionMatrix();
-  }
-
-  return { pos, vel, speed };
 }
 
 function updateWorkerPhysicsFrame(rt: RaftRuntimeCtx, body: RapierBody, delta: number) {
@@ -605,7 +601,6 @@ function updateWorkerPhysicsFrame(rt: RaftRuntimeCtx, body: RapierBody, delta: n
   }
 
   rt.deps.stepWorkerProxy(body, delta, impulses);
-  updateCameraFromBody(rt, body);
 }
 
 /** Refresh the buoyancy state from the staged datum; returns the submerged ratio. */
@@ -618,19 +613,21 @@ function updateBuoyancy(rt: RaftRuntimeCtx, raftY: number): number {
 
 /**
  * The raft's physics runtime: the module's step functions bound to one raft's
- * deps. Built once per raft (useRaftControls), never per frame.
+ * deps. Built once per raft (raftSimSystem), never per frame.
  */
 export function createRaftPhysicsRuntime(deps: RaftPhysicsRuntimeDeps) {
   const rt: RaftRuntimeCtx = {
     deps,
     sampleWaterLevel: deps.sampleWaterLevel ?? getVehicleWaterLevel,
     paddleModifiers: { cost: 1, regen: 1 },
+    currentBiome: deps.currentBiome ?? (() => ''),
+    random: createRng(RAFT_RNG_SEED),
   };
   return {
     calculateSubmergedRatio: (raftY: number) => calculateSubmergedRatio(rt, raftY),
     updateBuoyancy: (raftY: number) => updateBuoyancy(rt, raftY),
     applyTurbulence: (body: RapierBody, time: number, delta: number) => applyTurbulence(rt, body, time, delta),
-    applyTippingForce,
+    applyTippingForce: (body: RapierBody, submergedRatio: number, delta: number) => applyTippingForce(rt, body, submergedRatio, delta),
     dampenRotation,
     handleTipping: (body: RapierBody, delta: number) => handleTipping(rt, body, delta),
     tickRaftSurvival: () => tickRaftSurvival(rt),
@@ -643,7 +640,10 @@ export function createRaftPhysicsRuntime(deps: RaftPhysicsRuntimeDeps) {
     spawnShedParticle: (body: RapierBody) => spawnShedParticle(rt, body),
     spawnContactBurst: (contactPoint: Vec3Like, impactForce: number) => spawnContactBurst(rt, contactPoint, impactForce),
     resetRaft: (body: RapierBody) => resetRaft(rt, body),
-    updateCameraFromBody: (body: RapierBody) => updateCameraFromBody(rt, body),
+    /** A new run: the particle stream back to its seed. */
+    resetStream: () => {
+      rt.random = createRng(RAFT_RNG_SEED);
+    },
     updateWorkerPhysicsFrame: (body: RapierBody, delta: number) => updateWorkerPhysicsFrame(rt, body, delta),
   };
 }

@@ -1,8 +1,8 @@
 /**
  * playerControls.ts — the `PlayerControls` shape the runner / raft steps read,
- * filled from one InputFrame (#486 A). Pure and allocation-free: the R3F
- * adapter (`hooks/usePlayerControls`) and the vehicle sim systems (#556 A)
- * share it, so a headless run maps a pilot's frames exactly as the game does.
+ * filled from one InputFrame (#486 A). Pure and allocation-free: both vehicles'
+ * sim systems (#556 A, #577 A.1) fill it from `ctx.input`, so a headless run
+ * maps a pilot's frames exactly as the game does.
  */
 import { InputButton, type InputFrame } from './InputFrame';
 

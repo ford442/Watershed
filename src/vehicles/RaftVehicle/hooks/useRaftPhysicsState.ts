@@ -1,65 +1,29 @@
-import { useRef, useState } from 'react';
-import * as THREE from 'three';
-import { type BuoyancyState, type TippingState, type PaddleState, type StaminaState, type StunState, SHED, STAMINA } from '../constants';
+import { useState } from 'react';
+import { SHED } from '../constants';
 import { ParticlePool } from '../../../components/particlePool';
 import { COLLISION_PARTICLE_CAPACITY } from '../../../components/CollisionParticles';
+import { createRaftPhysicsState, type RaftPhysicsState } from '../raftPhysicsState';
 
 /** Paddle foam: a few per stroke, 1 s each. */
 const FOAM_PARTICLE_CAPACITY = 48;
 
-export interface RaftCollisionState {
-  currentBiome: string;
-  /** Collision bursts, drawn by ParticlePoolMesh in RaftVehicle. */
-  particles: ParticlePool;
-  prevVelocity: THREE.Vector3;
+export interface RaftMountState {
+  /** The step's state (SimCore's `vehicle-raft` writes it; the host only reads it). */
+  physics: RaftPhysicsState;
+  /** Stepped and drawn by ParticlePoolMesh; the physics step only spawns into them. */
+  foamParticles: ParticlePool;
+  shedParticles: ParticlePool;
+  /** Collision bursts (raftCues spawns them on `vehicle-impact`). */
+  collisionParticles: ParticlePool;
 }
 
-export function useRaftPhysicsState() {
-  const buoyancyState = useRef<BuoyancyState>({
-    submergedRatio: 0,
-    buoyancyForce: 0,
-    isFloating: false,
-  });
-
-  const tippingState = useRef<TippingState>({
-    rollAngle: 0,
-    pitchAngle: 0,
-    dangerTime: 0,
-    isTipped: false,
-    lastSafePosition: new THREE.Vector3(),
-  });
-
-  const paddleState = useRef<PaddleState>({
-    leftPaddle: false,
-    rightPaddle: false,
-  });
-
-  const staminaState = useRef<StaminaState>({
-    current: STAMINA.MAX,
-    regenDelay: 0,
-    isExhausted: false,
-  });
-
-  const stunState = useRef<StunState>({
-    active: false,
-    timer: 0,
-  });
-
-  const forwardBiasState = useRef(0);
-  // Stepped and drawn by ParticlePoolMesh; physics only spawns into them.
-  // Lazy useState, not a useRef initialiser: that would build a pool per render.
-  const [foamParticles] = useState(() => new ParticlePool(FOAM_PARTICLE_CAPACITY));
-  const [shedParticles] = useState(() => new ParticlePool(SHED.COUNT_LIMIT));
-  const [collisionParticles] = useState(() => new ParticlePool(COLLISION_PARTICLE_CAPACITY));
-
-  const collisionState = useRef<RaftCollisionState>({
-    currentBiome: 'canyonSummer',
-    particles: collisionParticles,
-    prevVelocity: new THREE.Vector3(),
-  });
-
-  return {
-    buoyancyState, tippingState, paddleState, staminaState, stunState,
-    forwardBiasState, foamParticles, shedParticles, collisionState,
-  };
+/** One raft mount's state. Lazy `useState`: built once per mount, never per render. */
+export function useRaftPhysicsState(): RaftMountState {
+  const [state] = useState<RaftMountState>(() => ({
+    physics: createRaftPhysicsState(),
+    foamParticles: new ParticlePool(FOAM_PARTICLE_CAPACITY),
+    shedParticles: new ParticlePool(SHED.COUNT_LIMIT),
+    collisionParticles: new ParticlePool(COLLISION_PARTICLE_CAPACITY),
+  }));
+  return state;
 }

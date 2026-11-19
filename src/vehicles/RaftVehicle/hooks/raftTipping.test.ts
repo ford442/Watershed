@@ -47,7 +47,6 @@ function runtimeFor(tipping: TippingState) {
     forwardBiasTimer: { current: 0 },
     foamParticles: new ParticlePool(4),
     shedParticles: new ParticlePool(4),
-    camera: new THREE.PerspectiveCamera(),
     controls: {
       getControls: () => ({
         forward: false, backward: false, leftward: false, rightward: false, jump: false,
@@ -56,7 +55,6 @@ function runtimeFor(tipping: TippingState) {
       }),
     },
     stepWorkerProxy: () => {},
-    currentFov: { current: 75 },
     sampleWaterLevel: () => SHEET,
   };
   return createRaftPhysicsRuntime(deps);

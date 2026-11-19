@@ -7,11 +7,12 @@ import type { ChannelProfileSample, SegmentKind, TrackSegmentProps } from './typ
 
 import { usePlacementData, usePlacementInput } from './hooks/usePlacementData';
 import { useGeometries } from './hooks/useGeometries';
+import { SPARE_SLOT_SEGMENT_ID } from './spareSlot';
 import { TrackSegmentMeshes } from './TrackSegmentMeshes';
 import { noteSegmentBuilt, noteSegmentMounted, spawnTimingStart } from '../../terrain/spawnTiming';
 
 export default function TrackSegment({
-  segmentId = 0,
+  segmentId = SPARE_SLOT_SEGMENT_ID,
   type = 'normal',
   segmentPath,
   width = 28,

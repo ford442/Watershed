@@ -25,10 +25,11 @@
  * is Node-only (fs, the shipped wasm, Rapier -compat), so no module outside it —
  * app code, the sim, a component — may import it; only tests and itself.
  *
- * Headless sim (#556 A). The gameplay step must run in Node with no React app
+ * Headless sim (#556 A, #577 A.1). The gameplay step must run in Node with no React app
  * (the headless campaign), so the modules SimCore steps — everything under
- * sim/, every `*SimSystem.ts` and the vehicle steps (`vehicles/<v>/hooks/*Step.ts`)
- * — may not import React, the Zustand store (`systems/GameState`), hooks/,
+ * sim/, every `*SimSystem.ts`, the vehicle steps (`vehicles/<v>/hooks/*Step.ts`),
+ * their runtimes (`vehicles/<v>/hooks/*Runtime.ts`) and the vehicles' plain state
+ * and camera modules (`vehicles/<v>/*PhysicsState.ts`, `*CameraSync.ts`) — may not import React, the Zustand store (`systems/GameState`), hooks/,
  * components/ (a sibling in the file's own folder aside), ui/, a `.tsx` module
  * or audio playback. They read the run through `ctx.game` and emit cues on
  * `gameEvents` instead. Two checks:
@@ -60,7 +61,8 @@ const HEADLESS_DIR = 'src/sim/headless/';
 const isSimFile = (rel) =>
   (rel.startsWith('src/sim/') && !rel.startsWith(HEADLESS_DIR)) ||
   /SimSystem\.ts$/.test(rel) ||
-  /^src\/vehicles\/[^/]+\/hooks\/[^/]*Step\.ts$/.test(rel);
+  /^src\/vehicles\/[^/]+\/hooks\/[^/]*(Step|Runtime)\.ts$/.test(rel) ||
+  /^src\/vehicles\/[^/]+\/[^/]*(PhysicsState|CameraSync)\.ts$/.test(rel);
 
 /** Runtime-closure entries: the modules a headless run steps. */
 const SIM_CLOSURE_ENTRIES = [
@@ -68,6 +70,9 @@ const SIM_CLOSURE_ENTRIES = [
   'src/physics/rapierWorldSimSystem.ts',
   'src/vehicles/RunnerVehicle/runnerSimSystem.ts',
   'src/vehicles/RunnerVehicle/runnerCameraSync.ts',
+  'src/vehicles/RaftVehicle/raftSimSystem.ts',
+  'src/vehicles/RaftVehicle/raftCameraSync.ts',
+  'src/systems/vehicle/vehicleTunerSimSystem.ts',
   'src/systems/weather/weatherSimSystem.ts',
   'src/systems/sky/skySimSystem.ts',
   'src/systems/map/chunkBiomeSystem.ts',

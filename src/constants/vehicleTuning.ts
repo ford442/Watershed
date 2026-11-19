@@ -78,7 +78,7 @@ export const VEHICLE_TUNING = {
   /** Base lateral force multiplier during drift (0 = no drift, 1 = very slippery) */
   driftFactor: 0.55,
 
-  /** Additional drift intensity per unit of segment flowSpeed (VehicleTuner reads the neutral flowSpeed 1) */
+  /** Additional drift intensity per unit of segment flowSpeed (the vehicle tuner reads the neutral flowSpeed 1) */
   driftFlowScale: 0.18,
 
   /** Torque assist (yaw) applied while drifting */

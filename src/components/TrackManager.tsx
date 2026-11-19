@@ -16,13 +16,14 @@ import {
   tagRockColorSpaces,
 } from '../rendering/ktx2Textures';
 import TrackSegment from './TrackSegment';
-import VehicleTuner from './VehicleTuner';
+import { SPARE_SLOT_SEGMENT_ID } from './TrackSegment/spareSlot';
 import PooledObstacles from './PooledObstacles';
 import { createRiverSurfaceMaterial } from '../materials/river/createRiverSurfaceMaterial';
 import { resolveMaterialBackend } from '../rendering/materialBackend';
 import { WATER_LEVEL, REACH_API_BASE } from '../constants/game';
 import { AssetCache } from '../systems/reach/reachAssetCache';
 import { useNightMode } from '../hooks/useNightMode';
+import { useVehicleTunerSim } from '../hooks/useVehicleTunerSim';
 import {
   ProceduralMapManager,
   type MapManager,
@@ -171,6 +172,8 @@ const TrackManager = forwardRef<TrackManagerRef, TrackManagerProps>(function Tra
   const { camera, scene } = useThree();
   const [pool, setPool] = useState<PoolSnapshot>(EMPTY_POOL);
   const { isNight } = useNightMode();
+  // The vehicle tuner steps on SimCore (#577 A.2) for this mount.
+  useVehicleTunerSim(raftRef);
 
   const chunkManagerRef = useRef<ChunkManager | null>(null);
   /** Re-read the pool after the ChunkManager changed it (append, reset, treadmill step). */
@@ -612,7 +615,7 @@ const TrackManager = forwardRef<TrackManagerRef, TrackManagerProps>(function Tra
         <TrackSegment
           key={slotIndex}
           active={active}
-          segmentId={segment?.id}
+          segmentId={segment?.id ?? SPARE_SLOT_SEGMENT_ID}
           rockMaterial={rockMaterial}
           rockNormalMap={normalMap}
           raftRef={raftRef}
@@ -632,12 +635,7 @@ const TrackManager = forwardRef<TrackManagerRef, TrackManagerProps>(function Tra
       ))}
 
       <PooledObstacles slots={pooledObstacleSlots} rockMaterial={rockMaterial} />
-      {raftRef && (
-        <>
-          <VortexForceSystem targetRef={raftRef} segments={activeSegments} />
-          <VehicleTuner targetRef={raftRef} />
-        </>
-      )}
+      {raftRef && <VortexForceSystem targetRef={raftRef} segments={activeSegments} />}
     </group>
   );
 });

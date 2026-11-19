@@ -113,7 +113,7 @@ describe('centreline pilot', () => {
 
   // Not finished, with the measured reason (clear day, launch hour 18, colliders on or off alike).
   it.todo(
-    'glacial: wipeout at frame 3904 in segment 10, above-envelope — the pilot is airborne at y -462 against the segment\'s authored ceiling -476 (safeZone yMax 150): the runner falls at ~8 m/s (VehicleTuner\'s always-on water damping, a page quirk) while the tube drops faster, and the pilot has no slower line than airSpeed 8',
+    'glacial: wipeout at frame 3904 in segment 10, above-envelope — the pilot is airborne at y -462 against the segment\'s authored ceiling -476 (safeZone yMax 150): the runner falls at ~8 m/s (the vehicle tuner\'s always-on water damping, a page quirk) while the tube drops faster, and the pilot has no slower line than airSpeed 8',
   );
   it.todo(
     'lumber: wipeout at frame 22189 in segment 37, below-envelope — the runner fell 80 m under that segment\'s lowest centreline point; cause not investigated (the open-floor waterfall at segment 10 is crossed)',
