@@ -23,7 +23,7 @@
 import type { SweEventCall, SweStepInput } from '../systems/water/sweSim';
 import type { SweInflow } from '../systems/water/sweScroll';
 import type { RoutingReach } from '../systems/map/routingReach';
-import type { RouterWeather, RoutingForecast } from '../systems/water/riverRouter';
+import type { RouterRelease, RouterWeather, RoutingForecast } from '../systems/water/riverRouter';
 import type { SimFrame } from './SimFrame';
 import type { HeightfieldSummary } from '../rendering/gpuChores/heightfieldSummary';
 import type { SegmentMeshBuffers, SegmentMeshSpec } from '../terrain/segmentMeshBuild';
@@ -52,6 +52,11 @@ export interface SimRoute {
    * Absent = keep the weather the router has.
    */
   weather?: RouterWeather | null;
+  /**
+   * STEP only: a hazard's release joining the chain this step (#578 A), set on
+   * the worker's router with the weather, before it advances. Absent = none.
+   */
+  release?: RouterRelease | null;
   /**
    * STEP only: seconds the router advances — the step's new time, which is
    * `input.dt` less any re-queued shortfall the main thread's clocks already

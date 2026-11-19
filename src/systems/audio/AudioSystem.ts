@@ -189,6 +189,23 @@ export class AudioManager {
     return this.voices.playThunder(() => this.getThunderBuffer(), volume, delaySeconds, pitch);
   }
 
+  /**
+   * A synthesized one-shot whose samples come from the caller's chunk (#578 A:
+   * the dam horn rides in the hazard telegraph's). `make` renders it once per
+   * manager, cached by `name`. Like the thunder: not a SOUND_DEFS entry, bound
+   * by the same mute / unlock / SFX-channel rules, and unpanned; it is
+   * captioned under `name`, with `position` giving the caption's direction.
+   */
+  playSynthOneShot(
+    name: string,
+    make: (context: AudioContext) => AudioBuffer | null,
+    volume = 1,
+    position?: THREE.Vector3,
+  ): boolean {
+    getSoundCaptioner()?.(name, this.listener, position);
+    return this.voices.playThunder(() => this.synth.cached(name, make), volume, 0, 1);
+  }
+
   /** Wetness-muffle lowpass in Hz, or null when dry enough to skip the filter node. */
   getWetnessCutoffHz(): number | null {
     return wetnessCutoffHz();

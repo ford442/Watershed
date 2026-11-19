@@ -93,6 +93,16 @@ export type Grade = 'ok' | 'warn' | 'bad';
 /** Shape per grade: distinct outlines, so the step reads without colour. */
 export const GRADE_GLYPH: Record<Grade, string> = { ok: '●', warn: '▲', bad: '✖' };
 
+/**
+ * A hazard's phase as a shape (#578 A): the telegraph's colour is never the only
+ * signal, so the HUD banner leads its word with one of these.
+ */
+export const TELEGRAPH_GLYPH: Readonly<Record<'armed' | 'telegraph' | 'active', string>> = {
+  armed: '◆',
+  telegraph: '▲',
+  active: '✖',
+};
+
 /** Sprint stamina, 0–1: low is trouble. */
 export function staminaGrade(stamina: number): Grade {
   return stamina >= 0.5 ? 'ok' : stamina >= 0.25 ? 'warn' : 'bad';

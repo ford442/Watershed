@@ -55,6 +55,37 @@ export type HazardTrigger =
   | { type: 'stage'; above: number; distance?: number }
   | { type: 'delay'; seconds: number };
 
+/**
+ * Share of a release's authored `stage` the water under the player must reach
+ * before the active release can reach them: the surge has to arrive, not just
+ * the hour. With no SWE field (Low quality) the radius alone decides.
+ */
+export const HAZARD_RELEASE_REACH_FRACTION = 0.5;
+
+/** Seconds a release's gates take to open at the start of `active` (and to close at its end). */
+export const HAZARD_DEFAULT_RELEASE_RAMP_SECONDS = 2;
+
+/**
+ * Water an active hazard sends down the river (#578 A): a dam's open gates.
+ * The discharge joins the routed chain at the top of the hazard's segment
+ * (riverRouter `setRelease`, the same lateral plane the weather's runoff uses),
+ * so the SWE window's upstream edge, the water mesh and the hull all read the
+ * one routed stage — it is not a scripted wave.
+ */
+export interface HazardRelease {
+  /** Discharge the open gates add, m³/s. */
+  discharge: number;
+  /** Seconds to open at the start of `active` and to close at its end (default 2). */
+  rampSeconds?: number;
+  /**
+   * The stage (m above the still water sheet) the release raises its reach to:
+   * where the telegraph's wall band and water-edge decal are drawn. Authored,
+   * and pinned to the router's own rating at the hazard's hours by
+   * hydroContrast.test.ts, so the band shows where the water will actually reach.
+   */
+  stage: number;
+}
+
 /** What an active hazard does to a player it reaches: the survival layer, never an instant reset. */
 export interface HazardConsequence {
   /** Wetness added, 0–1 (survivalState.wetness). */
@@ -87,6 +118,8 @@ export interface HazardConfig {
   telegraphSeconds?: number;
   activeSeconds?: number;
   consequence?: HazardConsequence;
+  /** Water the hazard releases while active (a dam's gates); absent = none. */
+  release?: HazardRelease;
 }
 
 /** One line of a run's hazard log: a phase entered, or the player reached. Rides in the `.wsghost`. */

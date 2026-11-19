@@ -3,7 +3,9 @@
  *
  * The speed-wind loop (#399) and the thunder clap (#464) have no file in
  * public/sounds/: their samples come from speedWindBuffer.ts / thunderBuffer.ts,
- * rendered into an AudioBuffer once per manager on first use and cached.
+ * rendered into an AudioBuffer once per manager on first use and cached. A
+ * lazy chunk can bring its own (`cached`: the dam horn, #578 A, rides in the
+ * hazard telegraph's chunk, not the entry).
  */
 
 import { fillSpeedWindChannel, speedWindLoopLength } from './speedWindBuffer';
@@ -19,6 +21,8 @@ export interface SynthBuffers {
   speedWindLoop(): AudioBuffer | null;
   /** Synthesized thunder clap (#464). */
   thunderClap(): AudioBuffer | null;
+  /** A caller's synthesized buffer, rendered by `make` once per manager and cached by `name`. */
+  cached(name: string, make: (context: AudioContext) => AudioBuffer | null): AudioBuffer | null;
   /** Release the speed-wind loop (manager dispose). */
   release(): void;
 }
@@ -26,6 +30,7 @@ export interface SynthBuffers {
 export function createSynthBuffers(context: AudioContext | null): SynthBuffers {
   let speedWind: AudioBuffer | null = null;
   let thunder: AudioBuffer | null = null;
+  const made = new Map<string, AudioBuffer>();
 
   return {
     speedWindLoop() {
@@ -52,6 +57,15 @@ export function createSynthBuffers(context: AudioContext | null): SynthBuffers {
       fillThunderChannel(buffer.getChannelData(0), sampleRate, 0x7d0e);
       fillThunderChannel(buffer.getChannelData(1), sampleRate, 0x3a11);
       thunder = buffer;
+      return buffer;
+    },
+
+    cached(name, make) {
+      const hit = made.get(name);
+      if (hit) return hit;
+      if (!context) return null;
+      const buffer = make(context);
+      if (buffer) made.set(name, buffer);
       return buffer;
     },
 

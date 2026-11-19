@@ -12,6 +12,7 @@ import { hud } from './en/hud';
 import { menu } from './en/menu';
 import { settings } from './en/settings';
 import { captions } from './en/lazy/captions';
+import { hazards } from './en/lazy/hazards';
 import { pauseMenu } from './en/lazy/pauseMenu';
 import { runResults } from './en/lazy/runResults';
 import { settingsPanel } from './en/lazy/settingsPanel';
@@ -20,7 +21,7 @@ import { touchControls } from './en/lazy/touchControls';
 import { userRivers } from './en/lazy/userRivers';
 
 /** Every English part, boot and lazy. */
-const allParts = { common, hud, menu, settings, captions, pauseMenu, runResults, settingsPanel, todaysRiver, touchControls, userRivers };
+const allParts = { common, hud, menu, settings, captions, hazards, pauseMenu, runResults, settingsPanel, todaysRiver, touchControls, userRivers };
 import { es } from './locales/es';
 import { fr } from './locales/fr';
 import { LOCALES } from './types';

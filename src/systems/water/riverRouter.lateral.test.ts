@@ -120,3 +120,57 @@ describe('RiverRouter — a storm over reach 2 (lateral inflow)', () => {
     clear.dispose();
   });
 });
+
+describe('RiverRouter — a hazard release over reach 2 (#578 A)', () => {
+  const RELEASE_AT_2 = { discharge: 60, chainIndex: 2 };
+
+  it('joins reach 2 at once, reaches 0 and 1 never, and adds exactly its discharge', () => {
+    const shut = routerWith(null);
+    const open = routerWith(null);
+    open.setRelease(RELEASE_AT_2);
+    for (let t = 0; t < 60; t += 1) {
+      shut.advance(1);
+      open.advance(1);
+      expect(open.dischargeInto(0)).toBe(shut.dischargeInto(0));
+      expect(open.dischargeInto(1)).toBe(shut.dischargeInto(1));
+      expect(open.dischargeInto(2)).toBe(shut.dischargeInto(2) + RELEASE_AT_2.discharge);
+    }
+    expect(eta(open, 2) - eta(shut, 2)).toBeGreaterThan(0.3);
+    // …and the reach below hears it only once it has been routed through reach 2.
+    expect(open.dischargeInto(3)).toBeGreaterThan(shut.dischargeInto(3));
+    shut.dispose();
+    open.dispose();
+  });
+
+  it('a null or zero release routes bit for bit like no release', () => {
+    const none = routerWith(STORM_OVER_2);
+    const zero = routerWith(STORM_OVER_2);
+    const off = routerWith(STORM_OVER_2);
+    zero.setRelease({ discharge: 0, chainIndex: 2 });
+    off.setRelease(RELEASE_AT_2);
+    off.setRelease(null);
+    for (let t = 0; t < 40; t += 1) {
+      none.advance(1);
+      zero.advance(1);
+      off.advance(1);
+    }
+    for (const k of [0, 1, 2, 3, 4]) {
+      expect(zero.dischargeInto(k)).toBe(none.dischargeInto(k));
+      expect(off.dischargeInto(k)).toBe(none.dischargeInto(k));
+    }
+    none.dispose();
+    zero.dispose();
+    off.dispose();
+  });
+
+  it('adds to the weather when both join the same reach', () => {
+    const storm = routerWith(STORM_OVER_2);
+    const both = routerWith(STORM_OVER_2);
+    both.setRelease(RELEASE_AT_2);
+    storm.advance(1);
+    both.advance(1);
+    expect(both.dischargeInto(2)).toBeCloseTo(storm.dischargeInto(2) + RELEASE_AT_2.discharge, 9);
+    storm.dispose();
+    both.dispose();
+  });
+});

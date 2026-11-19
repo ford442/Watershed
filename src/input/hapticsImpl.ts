@@ -12,11 +12,13 @@
  *   impact   one sharp heavy-motor hit with a short tail — a wall, a landing,
  *            a splash entry.
  *   wipeout  a long decaying double surge.
+ *   warn     two even beats in both motors — a hazard's telegraph (#578 A):
+ *            felt as a warning, not as a hit.
  *
  * The browser keeps one effect per actuator (a new `playEffect` preempts the
  * last), so an envelope is a list of timed steps this module walks with
  * timeouts rather than several queued effects; a lower-priority pulse never
- * cuts a higher one short (wipeout > impact > flow).
+ * cuts a higher one short (wipeout > warn > impact > flow).
  *
  * Gates, in `shouldPulse`: the settings must allow it, the game must not be
  * paused or in a menu (`GameState.isPaused` is true for both), and the last
@@ -32,7 +34,7 @@ import { useInputStore } from './InputHub';
 import { getActivePadIndex } from './activePad';
 import type { InputSourceId } from './InputFrame';
 
-export type HapticKind = 'flow' | 'impact' | 'wipeout';
+export type HapticKind = 'flow' | 'impact' | 'warn' | 'wipeout';
 
 /** One `playEffect` call: starts `atMs` after the pulse, lasts `durationMs`. */
 export interface HapticStep {
@@ -51,6 +53,10 @@ export const HAPTIC_ENVELOPES: Readonly<Record<HapticKind, readonly HapticStep[]
     { atMs: 0, durationMs: 70, weak: 0.6, strong: 1.0 },
     { atMs: 70, durationMs: 110, weak: 0.25, strong: 0.45 },
   ],
+  warn: [
+    { atMs: 0, durationMs: 180, weak: 0.55, strong: 0.45 },
+    { atMs: 360, durationMs: 180, weak: 0.55, strong: 0.45 },
+  ],
   wipeout: [
     { atMs: 0, durationMs: 200, weak: 0.9, strong: 1.0 },
     { atMs: 200, durationMs: 160, weak: 0.4, strong: 0.7 },
@@ -60,7 +66,7 @@ export const HAPTIC_ENVELOPES: Readonly<Record<HapticKind, readonly HapticStep[]
 };
 
 /** Higher wins; equal restarts. */
-export const HAPTIC_PRIORITY: Readonly<Record<HapticKind, number>> = { flow: 0, impact: 1, wipeout: 2 };
+export const HAPTIC_PRIORITY: Readonly<Record<HapticKind, number>> = { flow: 0, impact: 1, warn: 2, wipeout: 3 };
 
 export function envelopeDurationMs(kind: HapticKind): number {
   const steps = HAPTIC_ENVELOPES[kind];

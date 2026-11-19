@@ -28,6 +28,7 @@ const CAPTION_KEYS: Readonly<Record<string, MessageKey>> = {
   impact: 'caption.impact',
   hardLanding: 'caption.hardLanding',
   boost: 'caption.boost',
+  damHorn: 'caption.damHorn',
   hazardHit: 'caption.hazardHit',
   'logJam.telegraph': 'caption.logJam.telegraph',
   'logJam.active': 'caption.logJam.active',

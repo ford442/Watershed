@@ -29,6 +29,8 @@ import {
   levelErrorSignature,
 } from './levelSchemaDebt';
 import { parseHazards } from '../systems/hazards/parseHazards';
+import { isHazardLiveAtHour } from '../systems/hazards/hazardHours';
+import { parseHydroEvents } from '../systems/water/hydroEvents';
 
 describe('map registry contract — (a) keys are assignable to MapRegistryId', () => {
   it('every Object.keys(MAP_REGISTRY) entry is a MapRegistryId at runtime', () => {
@@ -209,6 +211,22 @@ describe('map registry contract — authored JSON shape drift (ajv)', () => {
           expect(hydroIds.has(hazard.hydroEventId), `${label} hazard ${hazard.id} follows a missing hydroEvent`).toBe(true);
         }
         expect(segments.has(hazard.segmentIndex), `${label} hazard ${hazard.id} sits on an unauthored segment`).toBe(true);
+        if (hazard.release !== undefined) {
+          // #578 A: a release that parses away would telegraph a surge that never comes.
+          expect(
+            parseHazards([hazard])[0]?.release,
+            `${label} hazard ${hazard.id} authors a release the parser drops`,
+          ).toBeDefined();
+        }
+      }
+      // The router carries one release at a time (hazardRuntime publishes the
+      // first active one): two releases live at the same hour would silently
+      // drop the second's water while its telegraph still showed.
+      const events = parseHydroEvents(data.hydroEvents);
+      const releases = parseHazards(hazards).filter((h) => h.release);
+      for (let hour = 0; hour < 24; hour += 1) {
+        const live = releases.filter((h) => isHazardLiveAtHour(h, hour, events)).map((h) => h.id);
+        expect(live.length, `${label} has releases ${live.join(', ')} live at ${hour}:00`).toBeLessThanOrEqual(1);
       }
     },
   );

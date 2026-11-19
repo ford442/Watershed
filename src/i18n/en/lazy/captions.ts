@@ -13,6 +13,7 @@ export const captions = {
   'caption.impact': "Impact",
   'caption.hardLanding': "Hard landing",
   'caption.boost': "Boost",
+  'caption.damHorn': "Dam horn",
   'caption.hazardHit': "Hit — soaked and chilled",
   'caption.logJam.telegraph': "Log jam breaking",
   'caption.logJam.active': "Logs coming down",

@@ -36,8 +36,11 @@ gives every panel and control a border.
 One palette module: `src/systems/settings/access.ts` (authored palette, grades, glyphs) and
 `palettes.ts` (Deuteranopia, Protanopia, Tritanopia, High contrast — a lazy chunk). SettingsSync
 writes the active palette as `--a11y-*` custom properties; `access.css` holds the authored values as
-defaults. In-world code reads `getAccessPalette()` (`accessRuntime.ts`); the guide ribbon does today,
-and the hazard telegraph decals / rim lights (#553) must, through the `telegraph*` keys. Biome looks
+defaults. In-world code reads `getAccessPalette()` (`accessRuntime.ts`): the guide ribbon, and the hazard
+telegraph's wall band and water-edge decal (`HazardTelegraph.tsx`, #578 A) through the
+`telegraphArmed` / `telegraphWarn` / `telegraphActive` keys, repainted on a mode change. The HUD
+banner (`HazardBanner.tsx`) says the same phase with a glyph (`TELEGRAPH_GLYPH`: ◆ armed, ▲ telegraph,
+✖ active) and a word, coloured from `--a11y-telegraph-*`. Biome looks
 are untouched.
 
 ## Captions (C.3)
@@ -46,8 +49,8 @@ Off by default (Options → Accessibility → Captions). `CaptionLayer` (a lazy 
 on) registers `captionSound` (`src/systems/audio/captions.ts`) with the AudioManager and bridges
 hazard phases. A `caption` event is `{ id, direction (−1 / 0 / 1), priority, seconds? }`; direction is
 the sound's position in the camera listener's frame. Covered: impacts, splashes, crash into water,
-raft capsize, hard landing, boost, and every hazard's telegraph ("Dam release in 3 s") and active
-phase. **#553 A.4:** a new gameplay stem needs a row in `CAPTION_FOR_SOUND` and a `caption.*` key.
+raft capsize, hard landing, boost, the dam horn (#578 A), and every hazard's telegraph ("Dam release
+in 3 s") and active phase. **#578 A.4:** a new gameplay stem needs a row in `CAPTION_FOR_SOUND` and a `caption.*` key.
 
 ## Assists (D)
 
