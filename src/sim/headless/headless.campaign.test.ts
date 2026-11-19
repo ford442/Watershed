@@ -18,12 +18,12 @@
  *
  * The 600-frame mark is the 10-second row of the trace: same pose, same flow.
  *
- * A harness that reproduces a bug reproduces it on purpose. The page has one the
- * pin depends on (`pageQuirks.spareSlotsDropBedZero`, createHeadlessRun.ts): no
- * SWE bed under segment 0. The last test shows what the run reads without it.
- * When the page is fixed the browser smokes' checksums change, this pin fails,
- * and the fix is: flip the quirk's default, re-record (headless_trace.mjs and the
- * replay smoke), and say why in the PR.
+ * Re-recorded for #577 A (the raft and the vehicle tuner on SimCore, and the
+ * segment-0 bed fix). Until then the harness reproduced a page bug on purpose —
+ * the pool's spare slots withdrew segment 0's SWE bed — and its "quirk off" run
+ * read 65fcb57e 118b1329 6280ddeb a4da233b. With the page fixed, the browser
+ * reads exactly those: the harness called the fix's checksums before the page
+ * had them. Old (buggy) values: 9a1952b8 36bb12c6 6280ddeb a4da233b.
  */
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -66,7 +66,7 @@ const REPLAY_SPLITS = [
   [2, 19500],
   [3, 23500],
 ];
-const REPLAY_CHECKSUMS = ['9a1952b8', '36bb12c6', '6280ddeb', 'a4da233b'];
+const REPLAY_CHECKSUMS = ['65fcb57e', '118b1329', '6280ddeb', 'a4da233b'];
 
 let live: HeadlessRun | null = null;
 afterEach(() => {
@@ -142,18 +142,8 @@ describe('headless run vs the browser', () => {
     }
   });
 
-  it('shows the page quirk it reproduces: the spare pool slots take the bed of segment 0 with them', async () => {
-    const quirk = await startMeander();
-    expect(getRegisteredBathymetrySource(0)).toBeUndefined();
-    expect(getRegisteredBathymetrySource(1)).toBeDefined();
-    quirk.dispose();
-
-    const fixed = await startMeander({ pageQuirks: { spareSlotsDropBedZero: false } });
-    expect(getRegisteredBathymetrySource(0)).toBeDefined();
-    stepHeadless(fixed, 1500, meanderScript());
-    // Same positions, same splits; the water differs only where segment 0's floor is part of the field.
-    expect(splitPairs()).toEqual(REPLAY_SPLITS);
-    // Segments 2 and 3 are past segment 0's reach by their splits: those two checksums are the page's.
-    expect(getRecordedSplitChecksums()).toEqual(['65fcb57e', '118b1329', '6280ddeb', 'a4da233b']);
+  it('has every live segment\'s bed under the field, segment 0 too (#577 A.3)', async () => {
+    await startMeander();
+    for (const id of [-3, -2, -1, 0, 1, 2, 3]) expect(getRegisteredBathymetrySource(id)).toBeDefined();
   });
 });

@@ -169,7 +169,7 @@ Use pnpm only — the pinned version lives in `package.json`'s `packageManager` 
 | Runner | `src/vehicles/RunnerVehicle/` | Default on-foot FPS |
 | Raft | `src/vehicles/RaftVehicle/` | Buoyancy, paddle, tip |
 
-Orchestration: `VehicleMount` + `VehicleSystem` / input via `usePlayerControls`.
+Orchestration: `VehicleMount` + `VehicleSystem`; both vehicles step on SimCore and read `ctx.input` through `fillPlayerControls` (`input/playerControls.ts`).
 
 ### Coordinates
 

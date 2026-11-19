@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import type { BufferGeometry } from 'three';
 import type { TrackSegmentGeometries, UseGeometriesParams } from '../types';
+import { isSpareSlot } from '../spareSlot';
 import {
   computePlungeImpactPlacement,
   computeWaterfallPos,
@@ -144,7 +145,7 @@ export function useGeometries({
   // floor, hull and bed together — at most once every few seconds.
   const builtBed = builtMeshes?.bed ?? null;
   useEffect(() => {
-    if (!builtBed) return undefined;
+    if (!builtBed || isSpareSlot(segmentId)) return undefined;
     const mapId = getRunSession()?.mapId ?? ACTIVE_MAP_ID;
     registerSegmentErosion(segmentId, builtBed, `${mapId}:${segmentId}`);
     return () => unregisterSegmentErosion(segmentId);
@@ -172,6 +173,8 @@ export function useGeometries({
   // a segment still waiting on its worker tile publishes nothing yet.
   const bed = meshes?.bed ?? null;
   useEffect(() => {
+    // A spare slot (no segment) owns no bed: it must not withdraw a live one (#577 A.3).
+    if (isSpareSlot(segmentId)) return undefined;
     const source = createSegmentBathymetrySource(segmentId, bed);
     if (!source) {
       unregisterSegmentBathymetry(segmentId);

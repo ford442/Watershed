@@ -24,7 +24,6 @@
   "src/sim/headless/pilots/runUntil.ts",
   "src/sim/headless/segmentWorld.ts",
   "src/sim/headless/stepHeadless.ts",
-  "src/sim/headless/vehicleTunerFrame.ts",
   "src/sim/hullLinkProtocol.ts",
   "src/sim/linkPhysicsToSim.ts",
   "src/sim/nativeOwner.ts",
@@ -48,6 +47,7 @@
   "src/systems/pools/ObstaclePool.ts",
   "src/systems/pools/ParticlePool.ts",
   "src/systems/pools/PillarFragmentRegistry.ts",
+  "src/systems/vehicle/vehicleTunerSimSystem.ts",
   "src/terrain/erosionCodec.ts",
   "src/terrain/placement.ts",
   "src/terrain/placement/atmosphere.ts",
@@ -64,5 +64,9 @@
   "src/terrain/segmentMeshBuild.ts",
   "src/terrain/spawnTiming.ts",
   "src/terrain/terrainTile.ts",
-  "src/terrain/types.ts"
+  "src/terrain/types.ts",
+  "src/vehicles/RaftVehicle/hooks/RaftPhysicsStep.ts",
+  "src/vehicles/RaftVehicle/raftCameraSync.ts",
+  "src/vehicles/RaftVehicle/raftPhysicsState.ts",
+  "src/vehicles/RaftVehicle/raftSimSystem.ts"
 ]

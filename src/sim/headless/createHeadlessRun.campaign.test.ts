@@ -16,7 +16,7 @@ afterEach(() => {
 });
 
 describe('createHeadlessRun', () => {
-  it('registers the page\'s systems, the world step and the runner, in the page\'s order', async () => {
+  it('registers the page\'s systems, the world step, the runner and the tuner, in the page\'s order', async () => {
     live = await createHeadlessRun({ mapId: 'meander' });
     expect(simCore.getSystemIds()).toEqual([
       'weather-director',
@@ -29,6 +29,7 @@ describe('createHeadlessRun', () => {
       'score',
       'physics-world',
       'vehicle-runner',
+      'vehicle-tuner',
     ]);
   });
 
@@ -41,12 +42,7 @@ describe('createHeadlessRun', () => {
     expect(live.world.colliders.len()).toBe(7 + 1 + 4);
     const p = live.body.translation();
     expect([p.x, p.y, p.z]).toEqual([...PLAYER_SPAWN.position]);
-    // The page leaves segment 0 without a bed (pageQuirks.spareSlotsDropBedZero): six of seven are registered.
-    expect(getRegisteredBathymetryCount()).toBe(6);
-  });
-
-  it('registers all seven beds when the page quirk is off', async () => {
-    live = await createHeadlessRun({ mapId: 'meander', pageQuirks: { spareSlotsDropBedZero: false } });
+    // Every live segment has its bed: segment 0 too, since the spare pool slots stopped withdrawing it (#577 A.3).
     expect(getRegisteredBathymetryCount()).toBe(7);
   });
 

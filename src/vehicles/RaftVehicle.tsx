@@ -1,9 +1,8 @@
-import React, { useRef, useEffect, useState, forwardRef } from 'react';
+import React, { useRef, useEffect, forwardRef } from 'react';
 import { useThree } from '@react-three/fiber';
 import { CuboidCollider, RigidBody, type RapierRigidBody } from '@react-three/rapier';
 import type { RapierBody } from '../physics/rapierTypes';
 import * as THREE from 'three';
-import { createCollisionTracker } from '../systems/vehicle/VehicleSystem';
 import { ParticlePoolMesh } from '../components/CollisionParticles';
 import { PLAYER_SPAWN } from '../constants/game';
 import { createRapierWorkerProxy } from '../physics/createRapierWorkerProxy';
@@ -21,11 +20,11 @@ import { resolvePhysicsWorker } from '../utils/physicsWorkerFlag';
 import { linkPhysicsToSim } from '../sim/linkPhysicsToSim';
 import { startRaftWorkerSession, type RaftWorkerSession } from './RaftVehicle/raftWorkerSession';
 import { useSettingsStore } from '../systems/settings/useSettingsStore';
-import { usePlayerControls } from '../hooks/usePlayerControls';
 import { WATER_PHYSICS } from '../constants/waterPhysics';
-import { useRaftPhysicsState, type RaftCollisionState } from './RaftVehicle/hooks/useRaftPhysicsState';
+import { useRaftPhysicsState } from './RaftVehicle/hooks/useRaftPhysicsState';
 import type { TippingState } from './RaftVehicle/constants';
 import { useRaftControls } from './RaftVehicle/hooks/useRaftControls';
+import type { RaftWorkerLink } from './RaftVehicle/raftSimSystem';
 import { subscribeRaftCues } from './RaftVehicle/raftCues';
 import { computeShelfTrigger } from './utils/shelfLaunch';
 import { gameEvents } from '../systems/events/GameEvents';
@@ -33,7 +32,6 @@ import { setDebugTap } from '../debug/debugTaps';
 import { useAssetInstance } from '../assets/useAssetInstance';
 import { requestAsset } from '../assets/AssetRegistry';
 import { buildRaftHullPrimitive, RAFT_HULL_COLLIDERS } from './RaftVehicle/raftHull';
-import { getLiveAssists } from '../systems/settings/accessRuntime';
 
 /** Mirror the worker's post-step raft state onto the main-thread body. */
 function syncBodyFromWorkerState(body: RapierBody | null, workerState: WorkerRaftState | null) {
@@ -57,7 +55,10 @@ interface RaftWorkerStepRefs {
   getR3fState: () => { clock: { elapsedTime: number } };
 }
 
-/** Post one physics step to the Rapier worker (one in flight at a time). */
+/**
+ * Post one physics step to the Rapier worker (one in flight at a time). `delta` is
+ * SimCore's step: game speed (#558 D.1) is already in how often it steps.
+ */
 function stepRaftWorker(refs: RaftWorkerStepRefs, body: RapierBody, delta: number, impulses: Vec3Tuple[]) {
   const proxy = refs.workerProxyRef.current;
   if (!proxy || !refs.workerReadyRef.current || refs.workerStepPendingRef.current) return;
@@ -80,7 +81,7 @@ function stepRaftWorker(refs: RaftWorkerStepRefs, body: RapierBody, delta: numbe
     ),
   };
 
-  proxy.step(delta * getLiveAssists().gameSpeed, { impulses, waterForce }).then(({ state: workerState, waterForce: diagnostics }) => {
+  proxy.step(delta, { impulses, waterForce }).then(({ state: workerState, waterForce: diagnostics }) => {
     if (workerState) syncBodyFromWorkerState(refs.bodyRef.current, workerState);
     if (diagnostics) {
       setPhysicsWorkerDiagnostics(diagnostics);
@@ -114,7 +115,6 @@ interface RaftSessionMount {
   workerReadyRef: { current: boolean };
   workerStepPendingRef: { current: boolean };
   tippingState: { current: TippingState };
-  collisionState: { current: RaftCollisionState };
   shelfSpawnPointRef: { current: { x: number; y: number; z: number } | null };
   shelfTriggerRef: { current: ReturnType<typeof computeShelfTrigger> };
 }
@@ -161,10 +161,6 @@ function mountRaftSession(m: RaftSessionMount): () => void {
     m.tippingState.current.lastSafePosition.copy(m.bodyRef.current.translation());
   }
 
-  const offBiomeChange = gameEvents.on('biome-change', ({ biome }) => {
-    m.collisionState.current.currentBiome = biome;
-  });
-
   const offSegmentSpawn = gameEvents.on('segment-spawn', ({ segmentIndex, spawnPoint }) => {
     if (segmentIndex === 14) {
       m.shelfSpawnPointRef.current = spawnPoint;
@@ -173,7 +169,6 @@ function mountRaftSession(m: RaftSessionMount): () => void {
   });
 
   return () => {
-    offBiomeChange();
     offSegmentSpawn();
     if (workerSession) {
       workerSession.stop();
@@ -224,21 +219,13 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
   const getR3fState = useThree((state) => state.get);
   const useWorkerPhysics = useRaftWorkerDecision();
 
-  const controls = usePlayerControls();
-  // Impact events and their sim clock; built once (a `useRef(new …)` argument runs every render).
-  const [raftVehicle] = useState(createCollisionTracker);
-
   const workerProxyRef = useRef<RapierWorkerProxy | null>(null);
   const workerReadyRef = useRef(false);
   const workerStepPendingRef = useRef(false);
 
-  const physicsState = useRaftPhysicsState();
-  const {
-    buoyancyState, tippingState, paddleState, staminaState, stunState,
-    forwardBiasState, foamParticles, shedParticles, collisionState,
-  } = physicsState;
+  const mount = useRaftPhysicsState();
+  const { foamParticles, shedParticles, collisionParticles } = mount;
   // Sounds, shake and collision bursts from the step's cues (#556 A).
-  const collisionParticles = collisionState.current.particles;
   useEffect(() => subscribeRaftCues(collisionParticles), [collisionParticles]);
 
   // Waterfall launch-shelf v2: cache segment-14 spawn point and one-shot flag.
@@ -248,37 +235,30 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
 
   React.useImperativeHandle(forwardedRef, () => bodyRef.current as RapierRigidBody);
 
-  const workerStepRefs: RaftWorkerStepRefs = {
-    bodyRef, workerProxyRef, workerReadyRef, workerStepPendingRef, getR3fState,
-  };
-  const stepWorkerProxy = (body: RapierBody, delta: number, impulses: Vec3Tuple[] = []) =>
-    stepRaftWorker(workerStepRefs, body, delta, impulses);
+  // The Rapier worker's half of the step (#577 A.1): one link per worker decision,
+  // so the SimCore system is registered once per session, not per render.
+  const worker = React.useMemo<RaftWorkerLink | null>(() => {
+    if (!useWorkerPhysics) return null;
+    const refs: RaftWorkerStepRefs = { bodyRef, workerProxyRef, workerReadyRef, workerStepPendingRef, getR3fState };
+    return {
+      ownsBody: () => workerProxyRef.current !== null && workerReadyRef.current,
+      step: (body, delta, impulses) => stepRaftWorker(refs, body, delta, impulses),
+    };
+  }, [useWorkerPhysics, getR3fState]);
 
+  const tippingState = mount.physics.tippingState;
   useEffect(() => mountRaftSession({
     bodyRef, useWorkerPhysics, workerProxyRef, workerReadyRef, workerStepPendingRef,
-    tippingState, collisionState, shelfSpawnPointRef, shelfTriggerRef,
-    // tippingState / collisionState are refs from useRaftPhysicsState: stable for
-    // the mount, so the session still restarts only on a worker decision change.
-  }), [useWorkerPhysics, tippingState, collisionState]);
+    tippingState, shelfSpawnPointRef, shelfTriggerRef,
+    // tippingState is the mount's step state: stable for the mount, so the
+    // session still restarts only on a worker decision change.
+  }), [useWorkerPhysics, tippingState]);
 
   useRaftControls({
     bodyRef,
-    raftVehicle,
     camera,
-    controls,
-    workerProxyRef,
-    workerReadyRef,
-    useWorkerPhysics,
-    stepWorkerProxy,
-    buoyancyState,
-    tippingState,
-    paddleState,
-    staminaState,
-    stunState,
-    forwardBiasState,
-    foamParticles,
-    shedParticles,
-    collisionState,
+    mount,
+    worker,
     hullTintRef,
     shelfLaunchFiredRef,
     shelfTriggerRef,
@@ -318,7 +298,7 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
       {/* Stepped and drawn in useFrame: physics spawns, nothing re-renders (#503 B). */}
       <ParticlePoolMesh pool={foamParticles} opacity={0.85} />
       <ParticlePoolMesh pool={shedParticles} opacity={0.6} />
-      <ParticlePoolMesh pool={collisionState.current.particles} />
+      <ParticlePoolMesh pool={collisionParticles} />
     </group>
   );
 });

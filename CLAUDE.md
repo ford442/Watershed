@@ -114,7 +114,7 @@ src/
 ├── maps/                        # Authored map JSON + registry.ts
 ├── configs/                     # biomes.ts (BiomeId, WATER_PROFILES, HUD labels), BiomePalettes.ts, TrackBiomes.ts
 ├── constants/                   # game.ts, weather.ts, waterFlow.ts, …
-├── hooks/                       # useShaderLoader, usePlayerControls, … (no barrel)
+├── hooks/                       # useShaderLoader, useVehicleTunerSim, … (no barrel)
 ├── materials/                   # CanyonMaterial + backend hosts below
 │   ├── water/                   # ★ Water material host (GLSL | TSL) + node material
 │   ├── river/ canyon/           # Surface hosts routing GLSL vs TSL (#256 path A)

@@ -210,7 +210,7 @@ export interface DreiKeyMapEntry {
 /**
  * Derive the drei KeyboardControls `map` from bindings. Movement actions also
  * answer to the arrow keys (`ARROW_ALTERNATES`). Only key-kind bindings
- * are included — mouse bindings are handled separately by usePlayerControls,
+ * are included — mouse bindings are handled separately by KeyboardMouseSource,
  * since drei's KeyboardControls only listens to the keyboard.
  *
  * Pure: changing the returned reference rebuilds drei's listeners with no custom
@@ -237,7 +237,7 @@ export function bindingsToDreiMap(bindings: Bindings): DreiKeyMapEntry[] {
   return map;
 }
 
-/** Mouse-bound actions, as `{ action: 'Mouse2' }`. Consumed by usePlayerControls. */
+/** Mouse-bound actions, as `{ action: 'Mouse2' }`. Consumed by KeyboardMouseSource. */
 export function bindingsToMouseMap(
   bindings: Bindings
 ): Partial<Record<SettingsAction, string>> {

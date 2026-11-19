@@ -204,6 +204,11 @@ export interface GameEventMap {
   /** A one-shot camera shake the vehicle asked for (the host adds the haptic pulse). */
   'vehicle-shake': VehicleShakeDetail;
   'vehicle-impact': VehicleImpactDetail;
+  /**
+   * The vehicle tuner's surge (#577 A.2): `boost` on a jump press off cooldown,
+   * `wall` when riding a wall at speed. The host plays its sound.
+   */
+  'vehicle-surge': { kind: 'boost' | 'wall' };
   'raft-paddle': { side: 'left' | 'right' };
   'raft-splash': { intensity: number };
   'raft-tip': void;

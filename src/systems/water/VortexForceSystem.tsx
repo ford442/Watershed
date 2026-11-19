@@ -3,7 +3,7 @@
  * player rigid body when inside an authored vortex field (Hydro-Dam chamber).
  *
  * Uses the pure helper in physics/vortexForces.ts so gate strength can be
- * unit-tested without Rapier. Mounted beside VehicleTuner in TrackManager.
+ * unit-tested without Rapier. Mounted by TrackManager (beside the vehicle tuner's SimCore host).
  *
  * Authority (#397): a segment whose swirl is authored as a live `hydroEvents`
  * vortex is already in the SWE `u,w` the hull samples. This system skips those
