@@ -100,13 +100,20 @@ export class PlacementWriter {
     const a = iz0 * 3;
     const b = a + 3;
     const rows = this.rows;
-    const px = rows[a] + (rows[b] - rows[a]) * fz;
-    const py = rows[a + 1] + (rows[b + 1] - rows[a + 1]) * fz;
-    const pz = rows[a + 2] + (rows[b + 2] - rows[a + 2]) * fz;
+    // iz0 ≤ segmentsZ − 1, so a + 2 and b + 2 are inside the (segmentsZ + 1) × 3 rows.
+    const ax = rows[a]!;
+    const ay = rows[a + 1]!;
+    const az = rows[a + 2]!;
+    const dx = rows[b]! - ax;
+    const dy = rows[b + 1]! - ay;
+    const dz = rows[b + 2]! - az;
+    const px = ax + dx * fz;
+    const py = ay + dy * fz;
+    const pz = az + dz * fz;
     // World normal: along = dP/dz + (bx, by, 0), across = (ax, ay, 0).
-    const bwx = (rows[b] - rows[a]) / this.cellZ + sample.bx;
-    const bwy = (rows[b + 1] - rows[a + 1]) / this.cellZ + sample.by;
-    const bwz = (rows[b + 2] - rows[a + 2]) / this.cellZ;
+    const bwx = dx / this.cellZ + sample.bx;
+    const bwy = dy / this.cellZ + sample.by;
+    const bwz = dz / this.cellZ;
     let nx = -bwz * sample.ay;
     let ny = bwz * sample.ax;
     let nz = bwx * sample.ay - bwy * sample.ax;
@@ -126,7 +133,7 @@ export class PlacementWriter {
       nz = -nz;
     }
     const aux = sample.band | (PlacementAnchor.GROUND << 3) | flags;
-    this.lists[CATEGORY_INDEX[category]].push(
+    this.list(category).push(
       px + lateral - nx * embed,
       py + sample.y - ny * embed,
       pz - nz * embed,
@@ -166,12 +173,16 @@ export class PlacementWriter {
     const a = iz0 * 3;
     const b = a + 3;
     const rows = this.rows;
+    // In range as in pushGround.
+    const ax = rows[a]!;
+    const ay = rows[a + 1]!;
+    const az = rows[a + 2]!;
     const g = sampleTile(this.floor, s, lateral, this.ground);
     const band = g.ok ? g.band : TerrainBand.RIM;
-    this.lists[CATEGORY_INDEX[category]].push(
-      rows[a] + (rows[b] - rows[a]) * fz + lateral,
-      rows[a + 1] + (rows[b + 1] - rows[a + 1]) * fz + y,
-      rows[a + 2] + (rows[b + 2] - rows[a + 2]) * fz,
+    this.list(category).push(
+      ax + (rows[b]! - ax) * fz + lateral,
+      ay + (rows[b + 1]! - ay) * fz + y,
+      az + (rows[b + 2]! - az) * fz,
       0,
       1,
       0,
@@ -189,24 +200,29 @@ export class PlacementWriter {
 
   /** Push a world-space record untouched (authored, `snap: false`). */
   pushWorld(category: PlacementCategory, s: number, lateral: number, p: Vec3, rx: number, ry: number, rz: number, sc: number, flags: number): void {
-    this.lists[CATEGORY_INDEX[category]].push(
+    this.list(category).push(
       p.x, p.y, p.z, 0, 1, 0, rx, ry, rz, sc, sc, sc, s, lateral,
       TerrainBand.RIM | (PlacementAnchor.AUTHORED << 3) | flags,
     );
   }
 
+  /** The record list of `category` (`lists` has one per PLACEMENT_CATEGORIES entry, CATEGORY_INDEX indexes it). */
+  private list(category: PlacementCategory): number[] {
+    return this.lists[CATEGORY_INDEX[category]]!;
+  }
+
   count(category: PlacementCategory): number {
-    return this.lists[CATEGORY_INDEX[category]].length / PLACEMENT_STRIDE;
+    return this.list(category).length / PLACEMENT_STRIDE;
   }
 
   truncate(category: PlacementCategory, n: number): void {
-    const list = this.lists[CATEGORY_INDEX[category]];
+    const list = this.list(category);
     if (list.length > n * PLACEMENT_STRIDE) list.length = n * PLACEMENT_STRIDE;
   }
 
   pack(caps?: PlacementCaps): ArrayBuffer {
-    const counts = PLACEMENT_CATEGORIES.map((c, k) => {
-      const n = this.lists[k].length / PLACEMENT_STRIDE;
+    const counts = PLACEMENT_CATEGORIES.map((c) => {
+      const n = this.list(c).length / PLACEMENT_STRIDE;
       const cap = caps?.[c];
       return cap === undefined ? n : Math.max(0, Math.min(n, Math.floor(cap)));
     });
@@ -222,8 +238,9 @@ export class PlacementWriter {
     counts.forEach((n, k) => {
       header[4 + 2 * k] = start;
       header[5 + 2 * k] = n;
-      const list = this.lists[k];
-      for (let i = 0; i < n * PLACEMENT_STRIDE; i += 1) records[start * PLACEMENT_STRIDE + i] = list[i];
+      const list = this.lists[k]!; // one list per category, k < PLACEMENT_CATEGORIES.length
+      // n ≤ the list's record count (caps only lower it), so i stays inside the list.
+      for (let i = 0; i < n * PLACEMENT_STRIDE; i += 1) records[start * PLACEMENT_STRIDE + i] = list[i]!;
       start += n;
     });
     return buffer;

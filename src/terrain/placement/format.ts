@@ -117,8 +117,9 @@ export const ROCK_TYPE_CODES = ['auto', 'boulder', 'slab', 'column'] as const;
 
 export const auxBand = (aux: number): TerrainBandId => (aux & 7) as TerrainBandId;
 export const auxAnchor = (aux: number): PlacementAnchorId => ((aux >> 3) & 3) as PlacementAnchorId;
+// `& 3` keeps the index inside the four codes.
 export const auxRockType = (aux: number): (typeof ROCK_TYPE_CODES)[number] =>
-  ROCK_TYPE_CODES[(aux >> PlacementAux.ROCK_TYPE_SHIFT) & 3];
+  ROCK_TYPE_CODES[(aux >> PlacementAux.ROCK_TYPE_SHIFT) & 3]!;
 
 // ---------------------------------------------------------------------------
 // Reading a buffer
@@ -142,7 +143,8 @@ export function readPlacements(buffer: ArrayBuffer | null | undefined): Placemen
 /** First record index and record count of `category`. */
 export function categoryRange(view: PlacementView, category: PlacementCategory): { start: number; count: number } {
   const k = CATEGORY_INDEX[category];
-  return { start: view.header[4 + 2 * k], count: view.header[5 + 2 * k] };
+  // readPlacements sized the header to PLACEMENT_HEADER_WORDS, so every category's pair is in it.
+  return { start: view.header[4 + 2 * k]!, count: view.header[5 + 2 * k]! };
 }
 
 /** An empty, valid placement buffer. */

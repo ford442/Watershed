@@ -53,12 +53,16 @@
   "src/terrain/placement/atmosphere.ts",
   "src/terrain/placement/authored.ts",
   "src/terrain/placement/fauna.ts",
+  "src/terrain/placement/format.ts",
   "src/terrain/placement/frame.ts",
   "src/terrain/placement/glacial.ts",
   "src/terrain/placement/inputs.ts",
   "src/terrain/placement/rocks.ts",
   "src/terrain/placement/row.ts",
   "src/terrain/placement/vegetation.ts",
+  "src/terrain/placement/writer.ts",
+  "src/terrain/segmentMeshBuild.ts",
   "src/terrain/spawnTiming.ts",
+  "src/terrain/terrainTile.ts",
   "src/terrain/types.ts"
 ]
