@@ -213,7 +213,9 @@ export const useGameStore = create<GameStore>((set) => ({
 
   setIsPaused: (paused) => set({ isPaused: paused }),
 
-  setDistance: (distance) => set({ distance }),
+  // Same value → same state: zustand skips the notify, so a per-frame caller
+  // costs no listener pass between whole-metre changes (#574 E.3).
+  setDistance: (distance) => set((s) => (s.distance === distance ? s : { distance })),
 
   setScore: (score) => set({ score }),
 

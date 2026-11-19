@@ -59,7 +59,6 @@ export function useExperienceLifecycle({
   const setCurrentSegmentIndex = useGameStore((s) => s.setCurrentSegmentIndex);
   const setRespawnSegmentIndex = useGameStore((s) => s.setRespawnSegmentIndex);
   const setWaterfallGravityMultiplier = useGameStore((s) => s.setWaterfallGravityMultiplier);
-  const setDistance = useGameStore((s) => s.setDistance);
   const setSpawnPoint = useGameStore((s) => s.setSpawnPoint);
   const setSpawnPoints = useGameStore((s) => s.setSpawnPoints);
 
@@ -325,7 +324,10 @@ export function useExperienceLifecycle({
             speed,
             useGameStore.getState().currentSegmentIndex,
           );
-          setDistance(meters);
+          // Transient write (no hook subscription here); setDistance only notifies
+          // when the whole metre changes, and the HUD / F3 leaves that show it are
+          // the only readers (#574 E.3).
+          useGameStore.getState().setDistance(meters);
         }
 
         if (posOk && !isWipeout) {

@@ -1,5 +1,5 @@
 // IceSpray — lightweight ice-crystal spray particle burst for glacier segments.
-import React, { useRef, useMemo, useEffect } from 'react';
+import React, { useRef, useMemo } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import type { IceSprayProps } from './types';
@@ -11,6 +11,7 @@ const random = createRng(0x5c7db341);
 const MAX_PARTICLES = 20;
 const SPRAY_GRAVITY = -4.5;
 const BASE_LIFETIME = 1.0;
+const BURST_THRESHOLD = 0.15;
 
 const SHARED_GEO = new THREE.PlaneGeometry(0.12, 0.12);
 const ICE_COLOR = new THREE.Color('#c8eeff');
@@ -26,7 +27,7 @@ interface IceParticle {
   scale: number;
 }
 
-export default function IceSpray({ origin, intensity = 0.5, active = true }: IceSprayProps) {
+export default function IceSpray({ origin, intensityRef, activeRef }: IceSprayProps) {
   const meshRef = useRef<THREE.InstancedMesh>(null);
   const particles = useRef<IceParticle[]>([]);
   const dummy = useMemo(() => new THREE.Object3D(), []);
@@ -77,19 +78,17 @@ export default function IceSpray({ origin, intensity = 0.5, active = true }: Ice
     }
   };
 
-  useEffect(() => {
-    if (!active) return;
-    const threshold = 0.15;
-    if (Math.abs(intensity - lastIntensity.current) > threshold) {
-      lastIntensity.current = intensity;
-      const count = Math.max(2, Math.round(intensity * MAX_PARTICLES * 0.5));
-      spawnBurst(count, origin);
-    }
-  }, [intensity, active, origin]);
-
   useFrame((state, delta) => {
     const mesh = meshRef.current;
     if (!mesh) return;
+
+    // A burst when the sampled intensity has moved enough since the last one —
+    // read from refs here, so a speed change never re-renders (#574 E.3).
+    const intensity = intensityRef.current;
+    if (activeRef.current && Math.abs(intensity - lastIntensity.current) > BURST_THRESHOLD) {
+      lastIntensity.current = intensity;
+      spawnBurst(Math.max(2, Math.round(intensity * MAX_PARTICLES * 0.5)), origin);
+    }
 
     particles.current = particles.current
       .map((p) => {

@@ -11,6 +11,7 @@ import { materialUniformBag } from '../../materials/dual/materialUniformBag';
 import { NonEmptyInstancedMesh } from '../../rendering/instancing/NonEmptyInstancedMesh';
 
 const MAX_DROPLETS = 180;
+const ZERO_VELOCITY = { current: 0 } as const;
 
 interface ImpactDroplet {
   angle: number;
@@ -25,7 +26,7 @@ export default function WaterfallImpactZone({
   flowSpeed = 1.2,
   intensity = 1,
   particleDensity = 1,
-  playerVelocity = 0,
+  playerVelocityRef = ZERO_VELOCITY,
 }: WaterfallImpactZoneProps) {
   const plumeRef = useRef<THREE.InstancedMesh>(null);
   const foamRef = useRef<THREE.Mesh>(null);
@@ -87,8 +88,9 @@ export default function WaterfallImpactZone({
     plumeMesh.instanceMatrix.needsUpdate = true;
   }, [plumeInstances, dummy]);
 
+  // Unscaled burst velocities; the speed-dependent scale is applied per frame
+  // from the ref, so a speed change neither re-renders nor rebuilds the pool (#574 E.3).
   const droplets = useMemo((): ImpactDroplet[] => {
-    const velocityScale = Math.min(1.8, 0.8 + playerVelocity * 0.015 + particleDensity * 0.25);
     return Array.from({ length: MAX_DROPLETS }, (_, i) => {
       const angle = (i / MAX_DROPLETS) * Math.PI * 2;
       const burst = 1.4 + ((i * 17) % 23) / 10;
@@ -100,15 +102,15 @@ export default function WaterfallImpactZone({
           Math.sin(angle) * 0.6,
         ),
         velocity: new THREE.Vector3(
-          Math.cos(angle) * burst * velocityScale,
-          (2.6 + ((i * 7) % 11) * 0.22) * velocityScale,
-          Math.sin(angle) * burst * 0.7 * velocityScale,
+          Math.cos(angle) * burst,
+          2.6 + ((i * 7) % 11) * 0.22,
+          Math.sin(angle) * burst * 0.7,
         ),
         life: ((i * 19) % 100) / 100,
         scale: 0.6 + ((i * 29) % 9) * 0.08,
       };
     });
-  }, [playerVelocity, particleDensity]);
+  }, []);
 
   useFrame((state, delta) => {
     const time = state.clock.elapsedTime;
@@ -124,13 +126,14 @@ export default function WaterfallImpactZone({
     if (!dropletMesh) return;
 
     const spawnScale = THREE.MathUtils.clamp(intensity * (0.75 + particleDensity * 0.35), 0.4, 1.7);
+    const velocityScale = Math.min(1.8, 0.8 + playerVelocityRef.current * 0.015 + particleDensity * 0.25);
     droplets.forEach((droplet, index) => {
       droplet.life += delta * (0.9 + spawnScale * 0.6);
       if (droplet.life >= 1) droplet.life -= 1;
       const age = droplet.life;
-      const px = droplet.position.x + droplet.velocity.x * age * 0.32;
-      const py = droplet.position.y + droplet.velocity.y * age * 0.3 - 2.8 * age * age;
-      const pz = droplet.position.z + droplet.velocity.z * age * 0.26;
+      const px = droplet.position.x + droplet.velocity.x * velocityScale * age * 0.32;
+      const py = droplet.position.y + droplet.velocity.y * velocityScale * age * 0.3 - 2.8 * age * age;
+      const pz = droplet.position.z + droplet.velocity.z * velocityScale * age * 0.26;
       const scale = Math.max(0, (1 - age) * droplet.scale * 0.22 * spawnScale);
       dummy.position.set(px, py, pz);
       dummy.scale.setScalar(scale);
