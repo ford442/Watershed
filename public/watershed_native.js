@@ -7,4 +7,4 @@ a.q;b._ws_routeReachLateral=a.r;b._ws_routeReachSteady=a.s;b._ws_routeReachTrave
 new Uint16Array(a);b.HEAP32=new Int32Array(a);new Uint32Array(a);b.HEAPF32=new Float32Array(a);new Float64Array(a);new BigInt64Array(a);new BigUint64Array(a);return F}());b.calledRun=!0;p||(t=!0,F.g(),q?.(b));t?moduleRtn=b:moduleRtn=new Promise((a,c)=>{q=a;r=c});
 ;return moduleRtn}export default createWatershedNative;
 
-export const WATERSHED_WASM_SHA = "02de0f1a8c20811e";
+export const WATERSHED_WASM_SHA = "6019bce96a32dba1";

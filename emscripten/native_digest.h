@@ -62,7 +62,9 @@ inline uint32_t xorshift(uint32_t& s) {
 }
 
 template <typename T>
-inline uintptr_t at(std::vector<T>& v) { return reinterpret_cast<uintptr_t>(v.data()); }
+inline uintptr_t at(std::vector<T>& v) {
+    return reinterpret_cast<uintptr_t>(v.data());
+}
 
 /**
  * 40 x 24 cells over a random bed: 30 steps alternating the routed-edge and
@@ -88,17 +90,17 @@ inline uint32_t sweDigest() {
     reserveShallowWaterScratch(W, Z);
     for (int k = 0; k < 30; ++k) {
         if (k % 2 == 0) {
-            stepShallowWaterInflow(at(h), at(u), at(w), at(b), W, Z, 0.02f, kG, kDx, kH, 0.15f);
+            (void)stepShallowWaterInflow(at(h), at(u), at(w), at(b), W, Z, 0.02f, kG, kDx, kH, 0.15f);
         } else {
-            stepShallowWater(at(h), at(u), at(w), at(b), W, Z, 0.02f, kG, kDx, kH);
+            (void)stepShallowWater(at(h), at(u), at(w), at(b), W, Z, 0.02f, kG, kDx, kH);
         }
         if (k == 8) {
             for (int kind = 0; kind <= 4; ++kind) {
-                applySWEEvent(at(h), at(u), at(w), at(b), W, Z, kDx, -10.f, -6.f, kH, kind,
-                              -6.f + 3.f * static_cast<float>(kind), 0.f, 2.5f, 0.75f, 0.02f);
+                (void)applySWEEvent(at(h), at(u), at(w), at(b), W, Z, kDx, -10.f, -6.f, kH, kind,
+                                    -6.f + 3.f * static_cast<float>(kind), 0.f, 2.5f, 0.75f, 0.02f);
             }
         }
-        if (k == 16) scrollShallowWater(at(h), at(u), at(w), at(b), W, Z, 1, -2, 0.0625f, 0.125f, -0.25f);
+        if (k == 16) (void)scrollShallowWater(at(h), at(u), at(w), at(b), W, Z, 1, -2, 0.0625f, 0.125f, -0.25f);
     }
     // ABI 17: one step well past the CFL limit sub-cycles; its return is hashed too.
     const float consumed = stepShallowWaterInflow(at(h), at(u), at(w), at(b), W, Z, 0.375f, kG, kDx, kH, 0.15f);
@@ -126,16 +128,16 @@ inline uint32_t routingDigest() {
         lateral[k] = k % 3 == 0 ? 0.5f : 0.f;
     }
     std::vector<float> storage(kSeg * ROUTING_SUBREACHES), outflow(kSeg), lag(kSeg);
-    routeReachSteady(at(L), at(S), at(B), kSeg, 40.f, at(storage), at(outflow));
+    (void)routeReachSteady(at(L), at(S), at(B), kSeg, 40.f, at(storage), at(outflow));
     for (int t = 0; t < 60; ++t) {
         const float q = t % 20 < 10 ? 54.f : 40.f;
         if (t % 2 == 1) {
-            routeReachLateral(at(L), at(S), at(B), kSeg, q, at(lateral), 1.f, at(storage), at(outflow));
+            (void)routeReachLateral(at(L), at(S), at(B), kSeg, q, at(lateral), 1.f, at(storage), at(outflow));
         } else {
-            routeReach(at(L), at(S), at(B), kSeg, q, 1.f, at(storage), at(outflow));
+            (void)routeReach(at(L), at(S), at(B), kSeg, q, 1.f, at(storage), at(outflow));
         }
     }
-    routeReachTravelTime(at(L), at(S), at(B), kSeg, 40.f, at(lag));
+    (void)routeReachTravelTime(at(L), at(S), at(B), kSeg, 40.f, at(lag));
     Fnv f;
     f.add(storage);
     f.add(outflow);

@@ -16,6 +16,7 @@ import {
   bindNativeModule,
   isWasmHeapExhaustedError,
   WASM_ABI_VERSION,
+  WS_OK,
   WASM_ABI,
   WasmHeapExhaustedError,
   wasmExportName,
@@ -119,7 +120,7 @@ describe('loadWatershedNative', () => {
     // A stationary submerged raft in a −Z current is pushed downstream.
     const io = wasm.allocateGrid(16);
     wasm.HEAPF32.set([0, 0.45, -10, 0, 0, 0, 0, -1], io >> 2);
-    wasm.computeWaterForcesBatch(io, io + 32, 1, 2, 0.5, 80, 1, 0.47, 1.5, 0.7, 0, 0, 2.4);
+    expect(wasm.computeWaterForcesBatch(io, io + 32, 0, 1, 2, 0.5, 80, 1, 0.47, 1.5, 0.7, 0, 0, 2.4)).toBe(WS_OK);
     const out = wasm.HEAPF32.subarray((io >> 2) + 8, (io >> 2) + 16);
     expect(out[2]).toBeLessThan(0);
     expect(out[0]).toBe(0);

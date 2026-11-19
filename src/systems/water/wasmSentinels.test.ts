@@ -25,7 +25,9 @@ let wasm: WatershedNativeModule;
 
 /** A canary plane of `floats` in the heap; `untouched()` re-reads it through the live heap. */
 function canary(floats: number) {
-  const ptr = wasm.allocateGrid(floats);
+  // A plain number, not Ptr<F32>: these probes pass one canary block to every
+  // pointer kind on purpose (the ABI brands, #575, would refuse that).
+  const ptr: number = wasm.allocateGrid(floats);
   const view = () => new Float32Array(wasm.HEAPF32.buffer, ptr, floats);
   view().fill(CANARY);
   return {
@@ -192,10 +194,10 @@ describe('forces.cpp', () => {
     const io = canary(64);
     const low = lowMemory();
     const args = [4.5, 0.5, 150, 1.2, 0.47, 1.05, 0.7, 0, 0, 2.4] as const;
-    wasm.computeWaterForcesBatch(0, io.ptr, 2, ...args);
-    wasm.computeWaterForcesBatch(io.ptr, 0, 2, ...args);
-    wasm.computeWaterForcesBatch(io.ptr, io.ptr, -1, ...args);
-    wasm.computeWaterForcesBatch(io.ptr, io.ptr, WATER_FORCE_MAX_SAMPLES + 1, ...args);
+    wasm.computeWaterForcesBatch(0, io.ptr, 0, 2, ...args);
+    wasm.computeWaterForcesBatch(io.ptr, 0, io.ptr, 2, ...args);
+    wasm.computeWaterForcesBatch(io.ptr, io.ptr, io.ptr, -1, ...args);
+    wasm.computeWaterForcesBatch(io.ptr, io.ptr, io.ptr, WATER_FORCE_MAX_SAMPLES + 1, ...args);
     expect(io.untouched()).toBe(true);
     expect(lowMemory()).toEqual(low);
     io.free();
@@ -229,7 +231,7 @@ describe('particles.cpp', () => {
     expect(wasm.allocateParticleSoA(0)).toBe(0);
     expect(wasm.allocateParticleSoA(-1)).toBe(0);
     expect(wasm.allocateParticleSoA(PARTICLE_MAX_CAPACITY + 1)).toBe(0);
-    expect(wasm.initWaterfallParticles(0, 4, 4, 1, 1, 1, 0, 42)).toBe(42);
+    expect(wasm.initWaterfallParticles(0, 4, 4, 1, 1, 1, 0, 42)).toBe(42); // refused: the binding folds the status back to the seed
     expect(wasm.stepWaterfallParticles(soa.ptr, PARTICLE_MAX_CAPACITY + 1, 4, 0.1, 1, 1, 1, 42)).toBe(42);
     expect(wasm.stepWaterfallParticles(soa.ptr, -4, 4, 0.1, 1, 1, 1, 42)).toBe(42);
     wasm.stepSplashParticles(0, 4, 4, 0.1, -9.8, 0.99);

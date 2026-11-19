@@ -1,0 +1,335 @@
+/*
+ * abi.def — the one declaration of the watershed_native C ABI (#575).
+ *
+ * Every export is declared here once: its name, its parameters with their
+ * kinds (and so their units), its return, and the host-clean header that
+ * declares the implementation it forwards to. `node scripts/gen-abi.mjs`
+ * (pnpm gen:abi) writes everything else from this file:
+ *
+ *   emscripten/abi_generated.h              constants + the extern "C" ws_* wrappers
+ *   src/systems/water/wasmAbi.generated.ts  the branded TS interface, WASM_ABI table, constants
+ *   WASM.md (between the gen-abi markers)   the export reference table
+ *
+ * `gen-abi --check` (pnpm typecheck, and a step of every CMake build) fails
+ * when a generated file drifted from this one, or when the implementation's
+ * prototype in its header does not take these parameters — same C types,
+ * same names, same order. So a swap here, in a header, or in a generated file
+ * is a red build; and because the TS parameters are branded by kind
+ * (wasmUnits.ts), a swap at a TS call site fails tsc wherever the two brands
+ * differ.
+ *
+ * Syntax: an X-macro list, one entry per line, so a TU can include it with its
+ * own definitions of the macros below. The generator reads it line by line.
+ *
+ *   WS_ABI_VERSION(n)
+ *   WS_CONST(type, NAME, value, "doc")
+ *   WS_STRUCT(Name, "doc")  WS_FIELD(Kind, name, "doc")...  WS_END()
+ *   WS_FN(Return, name, header.h)  WS_DOC("doc")...  WS_ARG(Kind, name, "doc")...  WS_END()
+ *
+ * Kinds (C type -> TS type): PtrF32 / PtrU32 / PtrU8 / PtrSoA -> uintptr_t ->
+ * Ptr<F32 | U32 | U8 | ParticleSoA>; OutU32 -> uintptr_t, a trailing out-pointer
+ * the TS binding owns (hidden from TS); Cells -> int -> Cells; Count / Index ->
+ * int -> number; U32 -> uint32_t -> number; Seconds, Metres, MetresPerSecond,
+ * MetresPerSecondSquared, CubicMetresPerSecond, Kilograms, CubicMetres,
+ * SquareMetres, PerSecond, Radians -> float -> that brand; F32 -> float -> number.
+ *
+ * Returns: Void; I32; Status (int: WS_OK / WS_REJECTED / WS_PARTIAL /
+ * WS_BAD_ARG); Seconds; PtrF32; PtrSoA; Out(Struct) — the implementation
+ * returns Struct, the export writes it through a trailing out-pointer and the
+ * TS binding reads it back. A Status export with an OutU32 argument `xOut`
+ * returns the out value in TS, or argument `x` when the call is refused
+ * (warned once in dev).
+ *
+ * Changing anything here is an ABI change: bump WS_ABI_VERSION and add a row
+ * to the version history in WASM.md.
+ */
+
+WS_ABI_VERSION(18)
+
+/* ---- Statuses (common.h documents each) -------------------------------- */
+WS_CONST(int, WS_OK, 1, "The call did what it says.")
+WS_CONST(int, WS_REJECTED, 0, "Arguments refused (an extent, a null pointer, a non-finite scalar): nothing written.")
+WS_CONST(int, WS_PARTIAL, 2, "A batch wrote every row but refused some: those are zeros and flagged (ABI 18).")
+WS_CONST(int, WS_BAD_ARG, 3, "Finite arguments past a documented maximum: nothing written (ABI 18).")
+
+/* ---- Layouts --------------------------------------------------------------- */
+WS_CONST(int, WATER_FORCE_INPUT_STRIDE, 8, "Floats per computeWaterForcesBatch input row: posX posY posZ velX velY velZ flowDirX flowDirZ.")
+WS_CONST(int, WATER_FORCE_OUTPUT_STRIDE, 8, "Floats per output row: forceX forceY forceZ buoyancy drag flow turbulence submergedRatio.")
+WS_CONST(int, WATER_FORCE_MAX_SAMPLES, 65536, "Largest batch computeWaterForcesBatch accepts (#502).")
+WS_CONST(int, PARTICLE_SOA_PLANES, 9, "Planes of an allocateParticleSoA block: px py pz vx vy vz life maxLife scale.")
+WS_CONST(int, ROUTING_SUBREACHES, 4, "Reservoirs per routed segment: storage holds nSeg * ROUTING_SUBREACHES floats.")
+
+/* ---- Authored ranges (level.schema.json hydroEvents, hydroEvents.ts) -------- */
+WS_CONST(float, SWE_EVENT_MAX_RADIUS, 80, "Largest applySWEEvent radius (m); past it the call returns WS_BAD_ARG.")
+WS_CONST(float, SWE_EVENT_MAX_STRENGTH, 200, "Largest applySWEEvent strength; past it WS_BAD_ARG.")
+WS_CONST(float, SWE_EVENT_MAX_DT, 1, "Largest applySWEEvent dt (s); past it WS_BAD_ARG.")
+
+/* ---- Out-pointer structs --------------------------------------------------- */
+WS_STRUCT(RoutedEdge, "routedEdgeState result (routing.h).")
+    WS_FIELD(Metres, eta, "Free-surface perturbation at the upstream edge (m), the `h` datum.")
+    WS_FIELD(MetresPerSecond, speed, "Downstream (−Z) inflow speed of that stage over a zero bed (m/s).")
+WS_END()
+
+/* ---- Version ---------------------------------------------------------------- */
+WS_FN(I32, getVersion, abi)
+    WS_DOC("ABI version; the loader requires exactly WASM_ABI_VERSION.")
+WS_END()
+
+/* ---- Water forces (forces.h) ---------------------------------------------- */
+WS_FN(Status, computeWaterForcesBatch, forces.h)
+    WS_DOC("Water forces for sampleCount bodies sharing one config. A row with a non-finite input or")
+    WS_DOC("result is zeros, flagged 1 in `refusedPtr`, and the call returns WS_PARTIAL (ABI 18).")
+    WS_ARG(PtrF32, inputPtr, "sampleCount * WATER_FORCE_INPUT_STRIDE floats")
+    WS_ARG(PtrF32, outputPtr, "sampleCount * WATER_FORCE_OUTPUT_STRIDE floats")
+    WS_ARG(PtrF32, refusedPtr, "sampleCount floats, 1 = refused row; 0 = no flags")
+    WS_ARG(Count, sampleCount, "rows, [1, WATER_FORCE_MAX_SAMPLES]")
+    WS_ARG(MetresPerSecond, flowSpeed, "current speed along flowDir")
+    WS_ARG(Metres, waterLevel, "world Y of the surface")
+    WS_ARG(Kilograms, raftMass, "")
+    WS_ARG(CubicMetres, raftVolume, "")
+    WS_ARG(F32, dragCoefficient, "C_d")
+    WS_ARG(SquareMetres, frontalArea, "")
+    WS_ARG(SquareMetres, sideArea, "")
+    WS_ARG(Seconds, timeSeconds, "turbulence phase clock")
+    WS_ARG(F32, turbulenceStrength, "")
+    WS_ARG(PerSecond, turbulenceFrequency, "")
+WS_END()
+
+/* ---- Shallow water (swe.h) ------------------------------------------------- */
+WS_FN(Seconds, stepShallowWater, swe.h)
+    WS_DOC("Advance the field by dt in at most 4 CFL sub-steps; returns the time integrated (0 = rejected).")
+    WS_ARG(PtrF32, hPtr, "free-surface perturbation η")
+    WS_ARG(PtrF32, uPtr, "x velocity")
+    WS_ARG(PtrF32, wPtr, "z velocity")
+    WS_ARG(PtrF32, bPtr, "bed; 0 = flat")
+    WS_ARG(Cells, width, "")
+    WS_ARG(Cells, height, "")
+    WS_ARG(Seconds, dt, "")
+    WS_ARG(MetresPerSecondSquared, g, "")
+    WS_ARG(Metres, dx, "cell size")
+    WS_ARG(Metres, H, "still-water depth over a zero bed")
+WS_END()
+
+WS_FN(Seconds, stepShallowWaterInflow, swe.h)
+    WS_DOC("stepShallowWater with the upstream (+Z, last-row) edge held at the routed stage edgeEta.")
+    WS_ARG(PtrF32, hPtr, "")
+    WS_ARG(PtrF32, uPtr, "")
+    WS_ARG(PtrF32, wPtr, "")
+    WS_ARG(PtrF32, bPtr, "0 = flat")
+    WS_ARG(Cells, width, "")
+    WS_ARG(Cells, height, "")
+    WS_ARG(Seconds, dt, "")
+    WS_ARG(MetresPerSecondSquared, g, "")
+    WS_ARG(Metres, dx, "")
+    WS_ARG(Metres, H, "")
+    WS_ARG(Metres, edgeEta, "routed stage, the h datum")
+WS_END()
+
+WS_FN(Status, applySWEEvent, swe.h)
+    WS_DOC("Authored hydro source term: kind 0 inflow, 1 vortex, 2 braid, 3 roughness, 4 surge.")
+    WS_DOC("Radius / strength / dt past SWE_EVENT_MAX_* return WS_BAD_ARG (ABI 18).")
+    WS_ARG(PtrF32, hPtr, "")
+    WS_ARG(PtrF32, uPtr, "")
+    WS_ARG(PtrF32, wPtr, "")
+    WS_ARG(PtrF32, bPtr, "0 = flat (braid then writes no bed)")
+    WS_ARG(Cells, width, "")
+    WS_ARG(Cells, height, "")
+    WS_ARG(Metres, dx, "")
+    WS_ARG(Metres, originX, "world X of cell (0, 0)")
+    WS_ARG(Metres, originZ, "world Z of cell (0, 0)")
+    WS_ARG(Metres, H, "")
+    WS_ARG(Index, kind, "0..4")
+    WS_ARG(Metres, cx, "")
+    WS_ARG(Metres, cz, "")
+    WS_ARG(Metres, radius, "[0.5, SWE_EVENT_MAX_RADIUS]")
+    WS_ARG(F32, strength, "[0, SWE_EVENT_MAX_STRENGTH]; a surge's stage in metres")
+    WS_ARG(Seconds, dt, "[0, SWE_EVENT_MAX_DT]")
+WS_END()
+
+WS_FN(Status, scrollShallowWater, swe.h)
+    WS_DOC("Scroll h / u / w / b by whole cells: dst[x, z] = src[x - shiftX, z - shiftZ]; entering cells take the inflow state.")
+    WS_ARG(PtrF32, hPtr, "")
+    WS_ARG(PtrF32, uPtr, "")
+    WS_ARG(PtrF32, wPtr, "")
+    WS_ARG(PtrF32, bPtr, "0 = leave the bed alone")
+    WS_ARG(Cells, width, "")
+    WS_ARG(Cells, height, "")
+    WS_ARG(Cells, shiftX, "")
+    WS_ARG(Cells, shiftZ, "")
+    WS_ARG(Metres, inflowEta, "")
+    WS_ARG(MetresPerSecond, inflowU, "")
+    WS_ARG(MetresPerSecond, inflowW, "")
+WS_END()
+
+WS_FN(Void, reserveShallowWaterScratch, swe.h)
+    WS_DOC("Pre-size the solver scratch so no step / scroll allocates mid-call.")
+    WS_ARG(Cells, width, "")
+    WS_ARG(Cells, height, "")
+WS_END()
+
+WS_FN(PtrF32, allocateGrid, swe.h)
+    WS_DOC("Allocate count zero-initialised floats; returns a heap byte offset (0 = none; the TS binding throws).")
+    WS_ARG(Count, count, "")
+WS_END()
+
+WS_FN(Void, freeGrid, swe.h)
+    WS_DOC("Free a pointer returned by allocateGrid.")
+    WS_ARG(PtrF32, ptr, "")
+WS_END()
+
+/* ---- Channel routing (routing.h) ----------------------------------------- */
+WS_FN(Status, routeReach, routing.h)
+    WS_DOC("Advance the chain by dt with inflowQ entering the head segment.")
+    WS_ARG(PtrF32, lengthsPtr, "nSeg floats (m)")
+    WS_ARG(PtrF32, slopesPtr, "nSeg floats")
+    WS_ARG(PtrF32, widthsPtr, "nSeg floats (m)")
+    WS_ARG(Count, nSeg, "")
+    WS_ARG(CubicMetresPerSecond, inflowQ, "")
+    WS_ARG(Seconds, dt, "")
+    WS_ARG(PtrF32, storagePtr, "nSeg * ROUTING_SUBREACHES floats (m³)")
+    WS_ARG(PtrF32, outflowPtr, "nSeg floats (m³/s)")
+WS_END()
+
+WS_FN(Status, routeReachLateral, routing.h)
+    WS_DOC("routeReach plus lateralPtr (nSeg floats, m³/s) joining each segment at its top. 0 = routeReach.")
+    WS_ARG(PtrF32, lengthsPtr, "")
+    WS_ARG(PtrF32, slopesPtr, "")
+    WS_ARG(PtrF32, widthsPtr, "")
+    WS_ARG(Count, nSeg, "")
+    WS_ARG(CubicMetresPerSecond, inflowQ, "")
+    WS_ARG(PtrF32, lateralPtr, "nSeg floats (m³/s); 0 = none")
+    WS_ARG(Seconds, dt, "")
+    WS_ARG(PtrF32, storagePtr, "")
+    WS_ARG(PtrF32, outflowPtr, "")
+WS_END()
+
+WS_FN(Status, routeReachSteady, routing.h)
+    WS_DOC("Fill storage / outflow with the steady state that carries Q through every segment.")
+    WS_ARG(PtrF32, lengthsPtr, "")
+    WS_ARG(PtrF32, slopesPtr, "")
+    WS_ARG(PtrF32, widthsPtr, "")
+    WS_ARG(Count, nSeg, "")
+    WS_ARG(CubicMetresPerSecond, Q, "")
+    WS_ARG(PtrF32, storagePtr, "")
+    WS_ARG(PtrF32, outflowPtr, "")
+WS_END()
+
+WS_FN(Status, routeReachTravelTime, routing.h)
+    WS_DOC("Cumulative kinematic travel time (s) from the head to the end of each segment, for a steady Q.")
+    WS_ARG(PtrF32, lengthsPtr, "")
+    WS_ARG(PtrF32, slopesPtr, "")
+    WS_ARG(PtrF32, widthsPtr, "")
+    WS_ARG(Count, nSeg, "")
+    WS_ARG(CubicMetresPerSecond, Q, "")
+    WS_ARG(PtrF32, lagPtr, "nSeg floats (s)")
+WS_END()
+
+WS_FN(Out(RoutedEdge), routedEdgeState, routing.h)
+    WS_DOC("Routed discharge -> edge stage η (m) and inflow speed (m/s). Qref maps to exactly (0, 0).")
+    WS_ARG(CubicMetresPerSecond, Q, "")
+    WS_ARG(CubicMetresPerSecond, Qref, "")
+    WS_ARG(Metres, H, "")
+    WS_ARG(MetresPerSecondSquared, g, "")
+WS_END()
+
+/* ---- gpu-chores (chores.h) ------------------------------------------------- */
+WS_FN(Status, reduceF32Grid, chores.h)
+    WS_DOC("min, max, mean of count floats into out3.")
+    WS_ARG(PtrF32, src, "")
+    WS_ARG(Count, count, "")
+    WS_ARG(PtrF32, out3, "3 floats")
+WS_END()
+
+WS_FN(Status, histogramF32, chores.h)
+    WS_DOC("256-bin histogram of count floats over [rangeMin, rangeMax].")
+    WS_ARG(PtrF32, src, "")
+    WS_ARG(Count, count, "")
+    WS_ARG(F32, rangeMin, "")
+    WS_ARG(F32, rangeMax, "")
+    WS_ARG(PtrU32, binsPtr, "256 uint32")
+WS_END()
+
+WS_FN(Status, lumaHistogramU8, chores.h)
+    WS_DOC("256-bin BT.709 luma histogram of packed RGBA8.")
+    WS_ARG(PtrU8, rgba, "4 * pixelCount bytes")
+    WS_ARG(Count, pixelCount, "")
+    WS_ARG(PtrU32, binsPtr, "256 uint32")
+WS_END()
+
+WS_FN(Status, downsampleF32, chores.h)
+    WS_DOC("Box-filter downsample of a row-major f32 grid.")
+    WS_ARG(PtrF32, src, "")
+    WS_ARG(Cells, srcW, "")
+    WS_ARG(Cells, srcH, "")
+    WS_ARG(PtrF32, dst, "")
+    WS_ARG(Cells, dstW, "")
+    WS_ARG(Cells, dstH, "")
+WS_END()
+
+WS_FN(Status, blurSeparableF32, chores.h)
+    WS_DOC("Separable 3-tap [0.25, 0.5, 0.25] blur.")
+    WS_ARG(PtrF32, src, "")
+    WS_ARG(PtrF32, dst, "")
+    WS_ARG(Cells, width, "")
+    WS_ARG(Cells, height, "")
+WS_END()
+
+WS_FN(Status, packSurfaceField, chores.h)
+    WS_DOC("The SWE flow texture's bytes: RGBA f32 (u, w, depth, div) per cell into outRgba (4 * width * height floats).")
+    WS_ARG(PtrF32, hPtr, "")
+    WS_ARG(PtrF32, uPtr, "")
+    WS_ARG(PtrF32, wPtr, "")
+    WS_ARG(PtrF32, bPtr, "0 = flat")
+    WS_ARG(Cells, width, "")
+    WS_ARG(Cells, height, "")
+    WS_ARG(Metres, H, "")
+    WS_ARG(Metres, dx, "")
+    WS_ARG(PtrF32, outRgba, "")
+WS_END()
+
+/* ---- Particle SoA (particles.h) ------------------------------------------ */
+WS_FN(PtrSoA, allocateParticleSoA, particles.h)
+    WS_DOC("PARTICLE_SOA_PLANES * capacity zeroed floats; 0 for a capacity outside [1, PARTICLE_MAX_CAPACITY].")
+    WS_ARG(Count, capacity, "")
+WS_END()
+
+WS_FN(Void, freeParticleSoA, particles.h)
+    WS_DOC("Free a pointer from allocateParticleSoA.")
+    WS_ARG(PtrSoA, ptr, "")
+WS_END()
+
+WS_FN(Status, initWaterfallParticles, particles.h)
+    WS_DOC("Fill [0, active) with a waterfall chute; writes the advanced xorshift seed to seedOut (ABI 18).")
+    WS_ARG(PtrSoA, base, "")
+    WS_ARG(Count, capacity, "")
+    WS_ARG(Count, active, "")
+    WS_ARG(Metres, width, "")
+    WS_ARG(Metres, height, "")
+    WS_ARG(Metres, depthZ, "")
+    WS_ARG(Radians, fanSpreadRad, "")
+    WS_ARG(U32, seed, "")
+    WS_ARG(OutU32, seedOut, "1 uint32; untouched when refused")
+WS_END()
+
+WS_FN(Status, stepWaterfallParticles, particles.h)
+    WS_DOC("Age / Euler / chute recycle for [0, active); writes the advanced seed to seedOut (ABI 18).")
+    WS_ARG(PtrSoA, base, "")
+    WS_ARG(Count, capacity, "")
+    WS_ARG(Count, active, "")
+    WS_ARG(Seconds, dt, "")
+    WS_ARG(Metres, width, "")
+    WS_ARG(Metres, height, "")
+    WS_ARG(Metres, depthZ, "")
+    WS_ARG(U32, seed, "")
+    WS_ARG(OutU32, seedOut, "1 uint32; untouched when refused")
+WS_END()
+
+WS_FN(Status, stepSplashParticles, particles.h)
+    WS_DOC("Euler + gravity + damp + age for dense slots [0, count).")
+    WS_ARG(PtrSoA, base, "")
+    WS_ARG(Count, capacity, "")
+    WS_ARG(Count, count, "")
+    WS_ARG(Seconds, dt, "")
+    WS_ARG(MetresPerSecondSquared, gravityY, "")
+    WS_ARG(F32, damp, "per-call velocity factor")
+WS_END()

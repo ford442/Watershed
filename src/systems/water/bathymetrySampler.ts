@@ -30,13 +30,14 @@
 import { WATER_LEVEL } from '../../constants/game';
 import type { SegmentBedGrid } from '../../terrain/segmentMeshBuild';
 import { SWE_MEAN_DEPTH } from './SWEHeightField';
+import { SWE_DRY_BANK_BED } from './sweBedGuard';
 
 /**
  * Bed height used where no segment covers a cell, and the ceiling every
  * sampled bank is clamped to. Comfortably above `H + eta` for any plausible
  * disturbance, so uncovered cells read as dry land rather than open water.
  */
-export const BATHYMETRY_DRY_BED = SWE_MEAN_DEPTH + 2;
+export const BATHYMETRY_DRY_BED = SWE_DRY_BANK_BED;
 
 /** Deepest bed the sampler will emit (depth is capped at 2H in the thalweg). */
 const MIN_BED = -SWE_MEAN_DEPTH;

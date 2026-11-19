@@ -24,6 +24,9 @@
   "ignoreIssues": {
     "src/materials/**/*NodeMaterial*.ts": [
       "exports"
+    ],
+    "src/systems/water/wasmAbi.generated.ts": [
+      "exports"
     ]
   }
 }

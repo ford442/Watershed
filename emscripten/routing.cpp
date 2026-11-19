@@ -20,9 +20,7 @@ namespace {
  * is NaN, so one NaN discharge or length used to poison the chain for the
  * session, and +inf turns into inf / inf = NaN a step later.
  */
-float atLeast(float x, float lo) {
-    return std::isfinite(x) ? std::max(lo, x) : lo;
-}
+float atLeast(float x, float lo) { return std::isfinite(x) ? std::max(lo, x) : lo; }
 
 float clampSlope(float slope) {
     if (!(slope > ROUTING_MIN_SLOPE)) return ROUTING_MIN_SLOPE;  // also catches NaN
@@ -51,17 +49,13 @@ float volumeCoeff(float l, float width, float slope) {
     return l * B * std::pow(ROUTING_MANNING_N / (B * std::sqrt(S)), 0.6f);
 }
 
-float storageFor(float Q, float alpha) {
-    return alpha * std::pow(atLeast(Q, 0.f), 0.6f);
-}
+float storageFor(float Q, float alpha) { return alpha * std::pow(atLeast(Q, 0.f), 0.6f); }
 
 /** ROUTING_SUBREACHES as a span index (#559 B). */
 constexpr auto kSubreaches = static_cast<std::size_t>(ROUTING_SUBREACHES);
 
 /** A segment count from JS: [1, ROUTING_MAX_SEGMENTS]. */
-bool validSegments(int nSeg) {
-    return nSeg > 0 && nSeg <= ROUTING_MAX_SEGMENTS;
-}
+bool validSegments(int nSeg) { return nSeg > 0 && nSeg <= ROUTING_MAX_SEGMENTS; }
 
 /** The nSeg-long per-segment plane at `ptr`. */
 template <typename T>
@@ -75,9 +69,7 @@ std::span<float> storagePlane(uintptr_t ptr, int nSeg) {
 }
 
 /** Inverse of storageFor: Q = (S / α)^(5/3). */
-float dischargeFor(float S, float alpha) {
-    return std::pow(atLeast(S, 0.f) / alpha, 5.f / 3.f);
-}
+float dischargeFor(float S, float alpha) { return std::pow(atLeast(S, 0.f) / alpha, 5.f / 3.f); }
 
 }  // namespace
 
@@ -85,8 +77,8 @@ float routingCelerity(float Q, float width, float slope) {
     return celerityCoeff(width, slope) * std::pow(atLeast(Q, 0.f), 0.4f);
 }
 
-int routeReachSteady(uintptr_t lengthsPtr, uintptr_t slopesPtr, uintptr_t widthsPtr, int nSeg,
-                     float Q, uintptr_t storagePtr, uintptr_t outflowPtr) {
+int routeReachSteady(uintptr_t lengthsPtr, uintptr_t slopesPtr, uintptr_t widthsPtr, int nSeg, float Q,
+                     uintptr_t storagePtr, uintptr_t outflowPtr) {
     if (!validSegments(nSeg) || lengthsPtr == 0 || slopesPtr == 0 || widthsPtr == 0) return WS_REJECTED;
     if (storagePtr == 0 || outflowPtr == 0) return WS_REJECTED;
     const std::span<const float> L = segmentPlane<const float>(lengthsPtr, nSeg);
@@ -107,14 +99,13 @@ int routeReachSteady(uintptr_t lengthsPtr, uintptr_t slopesPtr, uintptr_t widths
     return WS_OK;
 }
 
-int routeReach(uintptr_t lengthsPtr, uintptr_t slopesPtr, uintptr_t widthsPtr, int nSeg,
-               float inflowQ, float dt, uintptr_t storagePtr, uintptr_t outflowPtr) {
+int routeReach(uintptr_t lengthsPtr, uintptr_t slopesPtr, uintptr_t widthsPtr, int nSeg, float inflowQ, float dt,
+               uintptr_t storagePtr, uintptr_t outflowPtr) {
     return routeReachLateral(lengthsPtr, slopesPtr, widthsPtr, nSeg, inflowQ, 0, dt, storagePtr, outflowPtr);
 }
 
-int routeReachLateral(uintptr_t lengthsPtr, uintptr_t slopesPtr, uintptr_t widthsPtr, int nSeg,
-                      float inflowQ, uintptr_t lateralPtr, float dt, uintptr_t storagePtr,
-                      uintptr_t outflowPtr) {
+int routeReachLateral(uintptr_t lengthsPtr, uintptr_t slopesPtr, uintptr_t widthsPtr, int nSeg, float inflowQ,
+                      uintptr_t lateralPtr, float dt, uintptr_t storagePtr, uintptr_t outflowPtr) {
     if (!validSegments(nSeg) || lengthsPtr == 0 || slopesPtr == 0 || widthsPtr == 0) return WS_REJECTED;
     if (storagePtr == 0 || outflowPtr == 0) return WS_REJECTED;
     if (!(dt >= ROUTING_MIN_DT) || !std::isfinite(dt)) return WS_REJECTED;  // NaN, denormal or inf: see ROUTING_MIN_DT
@@ -154,8 +145,8 @@ int routeReachLateral(uintptr_t lengthsPtr, uintptr_t slopesPtr, uintptr_t width
     return WS_OK;
 }
 
-int routeReachTravelTime(uintptr_t lengthsPtr, uintptr_t slopesPtr, uintptr_t widthsPtr, int nSeg,
-                         float Q, uintptr_t lagPtr) {
+int routeReachTravelTime(uintptr_t lengthsPtr, uintptr_t slopesPtr, uintptr_t widthsPtr, int nSeg, float Q,
+                         uintptr_t lagPtr) {
     if (!validSegments(nSeg) || lengthsPtr == 0 || slopesPtr == 0 || widthsPtr == 0 || lagPtr == 0) return WS_REJECTED;
     const std::span<const float> L = segmentPlane<const float>(lengthsPtr, nSeg);
     const std::span<const float> slope = segmentPlane<const float>(slopesPtr, nSeg);
@@ -172,11 +163,12 @@ int routeReachTravelTime(uintptr_t lengthsPtr, uintptr_t slopesPtr, uintptr_t wi
 }
 
 RoutedEdge routedEdgeState(float Q, float Qref, float H, float g) {
-    if (!(Qref > 0.f) || !(H > 0.f) || !(g > 0.f)) return RoutedEdge{ 0.f, 0.f };
-    if (!std::isfinite(Q) || !std::isfinite(Qref) || !std::isfinite(H) || !std::isfinite(g)) return RoutedEdge{ 0.f, 0.f };
-    if (Q == Qref) return RoutedEdge{ 0.f, 0.f };
+    if (!(Qref > 0.f) || !(H > 0.f) || !(g > 0.f)) return RoutedEdge{0.f, 0.f};
+    if (!std::isfinite(Q) || !std::isfinite(Qref) || !std::isfinite(H) || !std::isfinite(g))
+        return RoutedEdge{0.f, 0.f};
+    if (Q == Qref) return RoutedEdge{0.f, 0.f};
     const float ratio = std::max(Q, 0.f) / Qref;
     const float eta = std::clamp(H * (std::pow(ratio, ROUTING_RATING_EXPONENT) - 1.f), -0.9f * H, 2.f * H);
     const float speed = 2.f * (std::sqrt(g * (H + eta)) - std::sqrt(g * H));
-    return RoutedEdge{ eta, speed };
+    return RoutedEdge{eta, speed};
 }

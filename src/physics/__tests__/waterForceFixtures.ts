@@ -3,7 +3,7 @@
  *
  * These sample/config pairs are the contract between the C++ implementation
  * (emscripten/forces.cpp) and its TypeScript mirror (`calculateWaterForceFallback`
- * in WatershedWasm.ts). waterForceParity.test.ts pins the TS results to the
+ * in waterForceFallback.ts). waterForceParity.test.ts pins the TS results to the
  * committed expectations below, and — when run with WATERSHED_WASM_INTEGRATION=1
  * — additionally asserts the native module agrees within a float epsilon.
  *
@@ -97,5 +97,40 @@ export const WATER_FORCE_FIXTURES: WaterForceFixture[] = [
       turbulenceStrength: 0.075,
       turbulenceFrequency: 2.4,
     },
+  },
+];
+
+const submerged = WATER_FORCE_FIXTURES[0].sample;
+
+/**
+ * Rows forces.cpp refuses (ABI 18): a non-finite input, or a finite input whose
+ * result is not finite at float32. Each must come back as zeros (and flagged
+ * by the native batch), never as NaN forces.
+ */
+export const WATER_FORCE_REFUSED_FIXTURES: WaterForceFixture[] = [
+  {
+    name: 'NaN position.y (used to walk through clampf into NaN forces)',
+    sample: { ...submerged, position: { ...submerged.position, y: Number.NaN } },
+    config: RAFT_CONFIG,
+  },
+  {
+    name: 'infinite velocity.x',
+    sample: { ...submerged, velocity: { ...submerged.velocity, x: Number.POSITIVE_INFINITY } },
+    config: RAFT_CONFIG,
+  },
+  {
+    name: 'NaN flow direction',
+    sample: { ...submerged, flowDirection: { x: Number.NaN, z: -1 } },
+    config: RAFT_CONFIG,
+  },
+  {
+    name: 'finite velocity that overflows float32 when squared',
+    sample: { ...submerged, velocity: { x: 3e19, y: 0, z: -1.4 } },
+    config: RAFT_CONFIG,
+  },
+  {
+    name: 'NaN config scalar (timeSeconds, turbulence on)',
+    sample: submerged,
+    config: { ...RAFT_CONFIG, turbulenceStrength: 0.12, timeSeconds: Number.NaN },
   },
 ];

@@ -20,9 +20,13 @@ import {
   WS_OK,
   WATER_FORCE_INPUT_STRIDE,
   WATER_FORCE_OUTPUT_STRIDE,
+  WS_PARTIAL,
+  type F32,
+  type Metres,
   type NativeWaterForceConfig,
   type NativeWaterForceResult,
   type NativeWaterForceSample,
+  type Ptr,
   type WatershedNativeModule,
 } from './wasmAbi';
 
@@ -37,15 +41,15 @@ export interface SWEGrid {
   /** Grid height (rows). */
   height: number;
   /** Cell size (m). */
-  dx:     number;
+  dx:     Metres;
   /** WASM heap byte-offset for the height field. */
-  hPtr:   number;
+  hPtr:   Ptr<F32>;
   /** WASM heap byte-offset for the X-velocity field. */
-  uPtr:   number;
+  uPtr:   Ptr<F32>;
   /** WASM heap byte-offset for the Z-velocity field. */
-  wPtr:   number;
+  wPtr:   Ptr<F32>;
   /** WASM heap byte-offset for the bed-elevation field. */
-  bPtr:   number;
+  bPtr:   Ptr<F32>;
   /** Live Float32 view into the WASM heap — water height. */
   h:      Float32Array;
   /** Live Float32 view into the WASM heap — X velocity. */
@@ -64,13 +68,21 @@ export interface SWEGrid {
 
 export interface NativeWaterForceBatch {
   sampleCount: number;
-  inputPtr: number;
-  outputPtr: number;
+  inputPtr: Ptr<F32>;
+  outputPtr: Ptr<F32>;
+  /** One float per sample, 1 where the last compute() refused the row (ABI 18). */
+  refusedPtr: Ptr<F32>;
   input: Float32Array;
   output: Float32Array;
+  refused: Float32Array;
   setSample(index: number, sample: NativeWaterForceSample): void;
   compute(config: NativeWaterForceConfig): Float32Array;
   readResult(index: number): NativeWaterForceResult;
+  /**
+   * The last compute() refused sample `index` (ABI 18): a non-finite input or
+   * result. Its forces read as zeros — a body out of the water — not NaN.
+   */
+  isRefused(index: number): boolean;
   dispose(): void;
 }
 
@@ -138,21 +150,25 @@ export function createWaterForceBatch(
   mod: WatershedNativeModule,
   sampleCount: number,
 ): NativeWaterForceBatch {
-  const [inputPtr, outputPtr] = allocateGrids(mod, [
+  const [inputPtr, outputPtr, refusedPtr] = allocateGrids(mod, [
     sampleCount * WATER_FORCE_INPUT_STRIDE,
     sampleCount * WATER_FORCE_OUTPUT_STRIDE,
+    sampleCount,
   ]);
   const inCount = sampleCount * WATER_FORCE_INPUT_STRIDE;
   const outCount = sampleCount * WATER_FORCE_OUTPUT_STRIDE;
   const input = heapF32(mod, inputPtr, inCount);
   const output = heapF32(mod, outputPtr, outCount);
+  const refused = heapF32(mod, refusedPtr, sampleCount);
 
   return {
     sampleCount,
     inputPtr,
     outputPtr,
+    refusedPtr,
     input,
     output,
+    refused,
     setSample(index, sample) {
       if (index < 0 || index >= sampleCount) {
         throw new RangeError(`Water force sample ${index} out of range`);
@@ -171,6 +187,7 @@ export function createWaterForceBatch(
       const status = mod.computeWaterForcesBatch(
         inputPtr,
         outputPtr,
+        refusedPtr,
         sampleCount,
         config.flowSpeed,
         config.waterLevel,
@@ -183,10 +200,13 @@ export function createWaterForceBatch(
         config.turbulenceStrength,
         config.turbulenceFrequency,
       );
+      // Partial (ABI 18): refused rows are already zeros and flagged.
+      if (status === WS_PARTIAL) warnRejected('computeWaterForcesBatch', `count=${sampleCount}`, status);
       // Rejected (#533): no stale forces from the previous call.
-      if (status !== WS_OK) {
-        warnRejected('computeWaterForcesBatch', `count=${sampleCount}`);
+      else if (status !== WS_OK) {
+        warnRejected('computeWaterForcesBatch', `count=${sampleCount}`, status);
         output.fill(0);
+        refused.fill(1);
       }
       return output;
     },
@@ -206,9 +226,13 @@ export function createWaterForceBatch(
         submergedRatio: output[offset + 7],
       };
     },
+    isRefused(index) {
+      return refused[index] !== 0;
+    },
     dispose() {
       mod.freeGrid(inputPtr);
       mod.freeGrid(outputPtr);
+      mod.freeGrid(refusedPtr);
     },
   };
 }

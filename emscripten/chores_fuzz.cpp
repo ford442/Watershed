@@ -41,10 +41,14 @@ bool untouched(const std::vector<float>& v) {
 /** An extent JS might send: usually valid, sometimes zero, negative or past the cap. */
 int extent(fuzz::Input& in) {
     switch (in.u32() % 8u) {
-        case 0: return 0;
-        case 1: return -in.pick(1, 1 << 20);
-        case 2: return SWE_MAX_GRID_EXTENT + in.pick(1, 1 << 20);
-        default: return in.pick(1, 40);
+        case 0:
+            return 0;
+        case 1:
+            return -in.pick(1, 1 << 20);
+        case 2:
+            return SWE_MAX_GRID_EXTENT + in.pick(1, 1 << 20);
+        default:
+            return in.pick(1, 40);
     }
 }
 
@@ -66,10 +70,12 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
             for (float& v : src) v = value();
             std::vector<float> out(3, kUntouched);
             const bool nullSrc = in.coin() && count > 0;
-            reduceF32Grid(nullSrc ? 0 : ptr(src), count, ptr(out));
-            if (!valid || nullSrc) require(untouched(out), "rejected reduce wrote its output");
-            else require(std::isfinite(out[0]) && std::isfinite(out[1]) && std::isfinite(out[2]),
-                         "reduce produced a non-finite summary");
+            (void)reduceF32Grid(nullSrc ? 0 : ptr(src), count, ptr(out));
+            if (!valid || nullSrc)
+                require(untouched(out), "rejected reduce wrote its output");
+            else
+                require(std::isfinite(out[0]) && std::isfinite(out[1]) && std::isfinite(out[2]),
+                        "reduce produced a non-finite summary");
             break;
         }
         case 1: {
@@ -78,7 +84,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
             std::vector<float> src(valid ? static_cast<size_t>(count) : 0);
             for (float& v : src) v = value();
             std::vector<uint32_t> bins(256, 7u);
-            histogramF32(ptr(src), count, in.raw(), in.raw(), ptr(bins));
+            (void)histogramF32(ptr(src), count, in.raw(), in.raw(), ptr(bins));
             if (valid) {
                 uint64_t total = 0;
                 for (uint32_t b : bins) total += b;
@@ -94,7 +100,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
             std::vector<uint8_t> rgba(valid ? static_cast<size_t>(pixels) * 4u : 0);
             for (uint8_t& b : rgba) b = static_cast<uint8_t>(in.u32());
             std::vector<uint32_t> bins(256, 7u);
-            lumaHistogramU8(ptr(rgba), pixels, ptr(bins));
+            (void)lumaHistogramU8(ptr(rgba), pixels, ptr(bins));
             if (valid) {
                 uint64_t total = 0;
                 for (uint32_t b : bins) total += b;
@@ -110,10 +116,11 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
             const int cw = dw < 1 ? 1 : dw;
             const int ch = dh < 1 ? 1 : dh;
             const bool valid = validExtent(sw) && validExtent(sh) && validExtent(cw) && validExtent(ch);
-            std::vector<float> src(validExtent(sw) && validExtent(sh) ? static_cast<size_t>(sw) * static_cast<size_t>(sh) : 0);
+            std::vector<float> src(
+                validExtent(sw) && validExtent(sh) ? static_cast<size_t>(sw) * static_cast<size_t>(sh) : 0);
             for (float& v : src) v = value();
             std::vector<float> dst(valid ? static_cast<size_t>(cw) * static_cast<size_t>(ch) : 1, kUntouched);
-            downsampleF32(ptr(src), sw, sh, ptr(dst), dw, dh);
+            (void)downsampleF32(ptr(src), sw, sh, ptr(dst), dw, dh);
             if (!valid) require(untouched(dst), "rejected downsample wrote its output");
             break;
         }
@@ -129,8 +136,9 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
                 finite = finite && std::isfinite(v);
             }
             std::vector<float> dst(valid ? n : 1, kUntouched);
-            blurSeparableF32(ptr(src), ptr(dst), w, h);
-            if (!valid) require(untouched(dst), "rejected blur wrote its output");
+            (void)blurSeparableF32(ptr(src), ptr(dst), w, h);
+            if (!valid)
+                require(untouched(dst), "rejected blur wrote its output");
             else if (finite) {
                 for (float v : dst) require(std::isfinite(v), "blur of finite input is non-finite");
             }

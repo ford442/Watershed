@@ -23,10 +23,10 @@ namespace swe_goldens {
 
 /** Grid + step parameters shared by every fixture (medium quality budget). */
 struct GridSpec {
-    int width  = 32;
+    int width = 32;
     int height = 24;
-    float dx   = 0.75f;
-    float g    = 9.80665f;
+    float dx = 0.75f;
+    float g = 9.80665f;
     float refDepth = 1.f;
     int cells() const { return width * height; }
 };
@@ -93,8 +93,7 @@ inline Fields dryBasin(const GridSpec& spec, float surface = 0.4f, float peak = 
 }
 
 /** True when cell (x, z) of the dry-basin fixture starts dry. */
-inline bool dryBasinCellIsDry(const GridSpec& spec, int x, int z,
-                              float surface = 0.4f, float peak = 1.2f) {
+inline bool dryBasinCellIsDry(const GridSpec& spec, int x, int z, float surface = 0.4f, float peak = 1.2f) {
     return bumpBed(spec, x, z, peak) >= surface;
 }
 
@@ -120,12 +119,9 @@ inline float totalMass(const std::vector<float>& h) {
 
 /** Step a fixture in place through the public bed entry point. */
 inline void step(const GridSpec& spec, Fields& f, float dt) {
-    stepShallowWaterBed(
-        reinterpret_cast<uintptr_t>(f.h.data()),
-        reinterpret_cast<uintptr_t>(f.u.data()),
-        reinterpret_cast<uintptr_t>(f.w.data()),
-        reinterpret_cast<uintptr_t>(f.b.data()),
-        spec.width, spec.height, dt, spec.g, spec.dx, spec.refDepth);
+    stepShallowWaterBed(reinterpret_cast<uintptr_t>(f.h.data()), reinterpret_cast<uintptr_t>(f.u.data()),
+                        reinterpret_cast<uintptr_t>(f.w.data()), reinterpret_cast<uintptr_t>(f.b.data()), spec.width,
+                        spec.height, dt, spec.g, spec.dx, spec.refDepth);
 }
 
 }  // namespace swe_goldens

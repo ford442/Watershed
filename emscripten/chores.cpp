@@ -28,14 +28,10 @@ constexpr float BLUR_TAP = 0.25f;
 constexpr float BLUR_CENTER = 0.5f;
 
 /** A flat element count from JS: [0, WS_MAX_ELEMENTS]. */
-bool validCount(int count) {
-    return count >= 0 && count <= WS_MAX_ELEMENTS;
-}
+bool validCount(int count) { return count >= 0 && count <= WS_MAX_ELEMENTS; }
 
 /** A grid extent from JS: [1, SWE_MAX_GRID_EXTENT]. */
-bool validExtent(int extent) {
-    return extent > 0 && extent <= SWE_MAX_GRID_EXTENT;
-}
+bool validExtent(int extent) { return extent > 0 && extent <= SWE_MAX_GRID_EXTENT; }
 
 int binScalar(float value, float rangeMin, float rangeMax) {
     const float span = rangeMax - rangeMin;
@@ -133,7 +129,8 @@ int downsampleF32(uintptr_t src, int srcW, int srcH, uintptr_t dst, int dstW, in
     const int width = dstW < 1 ? 1 : dstW;
     const int height = dstH < 1 ? 1 : dstH;
     if (!validExtent(width) || !validExtent(height)) return WS_REJECTED;
-    const std::span<const float> s = heapSpan<const float>(src, static_cast<std::size_t>(srcW) * static_cast<std::size_t>(srcH));
+    const std::span<const float> s =
+        heapSpan<const float>(src, static_cast<std::size_t>(srcW) * static_cast<std::size_t>(srcH));
     const std::span<float> d = heapPlane(dst, width, height);
     for (int dy = 0; dy < height; ++dy) {
         int y0 = (dy * srcH) / height;
@@ -147,7 +144,8 @@ int downsampleF32(uintptr_t src, int srcW, int srcH, uintptr_t dst, int dstW, in
             int n = 0;
             for (int y = y0; y < y1; ++y) {
                 for (int x = x0; x < x1; ++x) {
-                    const float v = s[static_cast<std::size_t>(y) * static_cast<std::size_t>(srcW) + static_cast<std::size_t>(x)];
+                    const float v =
+                        s[static_cast<std::size_t>(y) * static_cast<std::size_t>(srcW) + static_cast<std::size_t>(x)];
                     if (!std::isfinite(v)) continue;
                     sum += static_cast<double>(v);
                     ++n;
@@ -173,18 +171,16 @@ int blurSeparableF32(uintptr_t src, uintptr_t dst, int width, int height) {
     };
     for (int y = 0; y < height; ++y) {
         for (int x = 0; x < width; ++x) {
-            tmp[at(x, y)] =
-                sampleClamped(s, width, height, x - 1, y) * BLUR_TAP +
-                sampleClamped(s, width, height, x, y) * BLUR_CENTER +
-                sampleClamped(s, width, height, x + 1, y) * BLUR_TAP;
+            tmp[at(x, y)] = sampleClamped(s, width, height, x - 1, y) * BLUR_TAP +
+                            sampleClamped(s, width, height, x, y) * BLUR_CENTER +
+                            sampleClamped(s, width, height, x + 1, y) * BLUR_TAP;
         }
     }
     for (int y = 0; y < height; ++y) {
         for (int x = 0; x < width; ++x) {
-            d[at(x, y)] =
-                sampleClamped(tmp, width, height, x, y - 1) * BLUR_TAP +
-                sampleClamped(tmp, width, height, x, y) * BLUR_CENTER +
-                sampleClamped(tmp, width, height, x, y + 1) * BLUR_TAP;
+            d[at(x, y)] = sampleClamped(tmp, width, height, x, y - 1) * BLUR_TAP +
+                          sampleClamped(tmp, width, height, x, y) * BLUR_CENTER +
+                          sampleClamped(tmp, width, height, x, y + 1) * BLUR_TAP;
         }
     }
     return WS_OK;
@@ -193,9 +189,8 @@ int blurSeparableF32(uintptr_t src, uintptr_t dst, int width, int height) {
 namespace {
 
 /** One cell of packSurfaceField, scalar: the reference the 4-wide groups match bit for bit. */
-void packCell(std::span<const float> h, std::span<const float> u, std::span<const float> w,
-              std::span<const float> b, std::span<float> out, int width, int height,
-              int x, int z, float H, float dx) {
+void packCell(std::span<const float> h, std::span<const float> u, std::span<const float> w, std::span<const float> b,
+              std::span<float> out, int width, int height, int x, int z, float H, float dx) {
     const std::size_t i = static_cast<std::size_t>(z) * static_cast<std::size_t>(width) + static_cast<std::size_t>(x);
     const float depth = std::max(0.f, (H + h[i]) - b[i]);
     float div = 0.f;
@@ -208,10 +203,12 @@ void packCell(std::span<const float> h, std::span<const float> u, std::span<cons
         const float spanZ = static_cast<float>(zHi - zLo) * dx;
         const std::size_t row = static_cast<std::size_t>(z) * static_cast<std::size_t>(width);
         const std::size_t col = static_cast<std::size_t>(x);
-        if (spanX > 0.f) div += (u[row + static_cast<std::size_t>(xHi)] - u[row + static_cast<std::size_t>(xLo)]) / spanX;
+        if (spanX > 0.f)
+            div += (u[row + static_cast<std::size_t>(xHi)] - u[row + static_cast<std::size_t>(xLo)]) / spanX;
         if (spanZ > 0.f) {
-            div += (w[static_cast<std::size_t>(zHi) * static_cast<std::size_t>(width) + col]
-                    - w[static_cast<std::size_t>(zLo) * static_cast<std::size_t>(width) + col]) / spanZ;
+            div += (w[static_cast<std::size_t>(zHi) * static_cast<std::size_t>(width) + col] -
+                    w[static_cast<std::size_t>(zLo) * static_cast<std::size_t>(width) + col]) /
+                   spanZ;
         }
     }
     const std::span<float> o = out.subspan(i * 4, 4);
@@ -223,8 +220,8 @@ void packCell(std::span<const float> h, std::span<const float> u, std::span<cons
 
 }  // namespace
 
-int packSurfaceField(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t bPtr,
-                     int width, int height, float H, float dx, uintptr_t outRgba) {
+int packSurfaceField(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t bPtr, int width, int height, float H,
+                     float dx, uintptr_t outRgba) {
     if (hPtr == 0 || uPtr == 0 || wPtr == 0 || outRgba == 0) return WS_REJECTED;
     if (!validExtent(width) || !validExtent(height)) return WS_REJECTED;
     if (!std::isfinite(H) || !(dx > 0.f) || !std::isfinite(dx)) return WS_REJECTED;
@@ -233,9 +230,8 @@ int packSurfaceField(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t b
     const std::span<const float> u = heapPlane(uPtr, width, height);
     const std::span<const float> w = heapPlane(wPtr, width, height);
     if (bPtr == 0 && g_flatBed.size() < n) g_flatBed.assign(n, 0.f);
-    const std::span<const float> b = bPtr != 0
-        ? std::span<const float>(heapPlane(bPtr, width, height))
-        : std::span<const float>(g_flatBed).first(n);
+    const std::span<const float> b =
+        bPtr != 0 ? std::span<const float>(heapPlane(bPtr, width, height)) : std::span<const float>(g_flatBed).first(n);
     const std::span<float> out = heapSpan<float>(outRgba, n * 4);
 
     const f32x4 vZero = f32x4_splat(0.f);
@@ -267,7 +263,8 @@ int packSurfaceField(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t b
             // div starts at +0 and adds each axis, as packCell does (0 + −0 is +0).
             f32x4 div = f32x4_add(vZero, f32x4_div(f32x4_sub(f32x4_load(&u[i + 1]), f32x4_load(&u[i - 1])), vSpanX));
             if (hasZ) {
-                div = f32x4_add(div, f32x4_div(f32x4_sub(f32x4_load(&w[rowHi + c]), f32x4_load(&w[rowLo + c])), vSpanZ));
+                div =
+                    f32x4_add(div, f32x4_div(f32x4_sub(f32x4_load(&w[rowHi + c]), f32x4_load(&w[rowLo + c])), vSpanZ));
             }
             div = f32x4_select(f32x4_gt(depth, vDry), div, vZero);
             f32x4_store(lu.data(), vu);

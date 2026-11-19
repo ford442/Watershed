@@ -22,7 +22,7 @@ import { weatherFlowRateDelta, type RunWeather } from '../map/weatherInflow';
 import type { RoutingReach } from '../map/routingReach';
 import { DEFAULT_FORECAST_INPUTS } from '../../constants/forecast';
 import type { SweInflow } from './sweScroll';
-import { ROUTING_SUBREACHES, allocateGrids, heapF32, type RoutedEdge, type WatershedNativeModule } from './wasmAbi';
+import { ROUTING_SUBREACHES, allocateGrids, heapF32, type CubicMetresPerSecond, type F32, type Metres, type MetresPerSecondSquared, type Ptr, type RoutedEdge, type Seconds, type WatershedNativeModule } from './wasmAbi';
 
 /**
  * Head discharge at `flowRate` 1 (m³/s). It is also the reference discharge
@@ -95,16 +95,16 @@ export interface RiverRouter {
   /** Seconds routed since launch. */
   readonly elapsed: number;
   /** Advance the chain by `dt` seconds of run time. */
-  advance(dt: number): void;
+  advance(dt: Seconds): void;
   /**
    * Discharge entering chain segment `k` (m³/s): the head inflow, or segment
    * k−1's outflow, plus any weather runoff joining at k this step.
    */
-  dischargeInto(k: number): number;
+  dischargeInto(k: number): CubicMetresPerSecond;
   /** Upstream-edge state for a window in chain segment `k`, relative to ROUTING_NOMINAL_DISCHARGE. */
-  edgeState(k: number, H: number, g: number): RoutedEdge;
+  edgeState(k: number, H: Metres, g: MetresPerSecondSquared): RoutedEdge;
   /** Kinematic travel time (s) from the head to segment `k`'s outflow at the nominal discharge. */
-  lag(k: number): number;
+  lag(k: number): Seconds;
   /** The weather the next `advance` routes (the director's, once per step). */
   setWeather(weather: RouterWeather | null): void;
   dispose(): void;
@@ -132,14 +132,14 @@ export function createRiverRouter(
 
   const forecast: RoutingForecast = options.forecast ?? DEFAULT_FORECAST_INPUTS;
   const spinUpHours = options.spinUpHours ?? ROUTING_SPINUP_HOURS;
-  const spinUpDt = options.spinUpDt ?? ROUTING_SPINUP_DT;
+  const spinUpDt: Seconds = options.spinUpDt ?? ROUTING_SPINUP_DT;
 
   // `lateral`: discharge joining each segment at its top, the weather over a reach (ABI 14).
   const [lengths, slopes, widths, storage, outflow, lag, lateral] =
     allocateGrids(wasm, [n, n, n, n * ROUTING_SUBREACHES, n, n, n]);
   const ptrs = { lengths, slopes, widths, storage, outflow, lag, lateral };
   // Made once: the heap is fixed-size, so these stay valid until dispose.
-  const view = (ptr: number) => heapF32(wasm, ptr, n);
+  const view = (ptr: Ptr<F32>) => heapF32(wasm, ptr, n);
   view(ptrs.lengths).set(reach.lengths);
   view(ptrs.slopes).set(reach.slopes);
   view(ptrs.widths).set(reach.widths);
@@ -147,7 +147,9 @@ export function createRiverRouter(
   const outflowView = view(ptrs.outflow);
   const lagView = view(ptrs.lag);
 
-  const route = (inflowQ: number, dt: number) =>
+  // Branded (#575): routeReach takes (…, inflowQ: m³/s, dt: s, …), so passing
+  // these two the other way round is a tsc error, not a silently wrong river.
+  const route = (inflowQ: CubicMetresPerSecond, dt: Seconds) =>
     wasm.routeReach(ptrs.lengths, ptrs.slopes, ptrs.widths, n, inflowQ, dt, ptrs.storage, ptrs.outflow);
 
   // Spin-up: steady at the first hour, then the real hydrograph up to launch.
@@ -166,9 +168,9 @@ export function createRiverRouter(
   const dry: RoutingForecast = { ...forecast, weather: null };
   /** Chain segment the weather sits over (lateral inflow), or null for the head. */
   let liveOver: number | null = null;
-  let headQ = headDischargeAtHour(launchHour, live);
+  let headQ: CubicMetresPerSecond = headDischargeAtHour(launchHour, live);
   /** Lateral discharge joining `lateralAt` this step (m³/s). */
-  let lateralQ = 0;
+  let lateralQ: CubicMetresPerSecond = 0;
   let lateralAt = -1;
   let disposed = false;
   const clampK = (k: number) => Math.max(0, Math.min(n - 1, Math.trunc(k)));

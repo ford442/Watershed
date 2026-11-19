@@ -128,10 +128,11 @@ function stubModule(stepMarker: number) {
     scrollShallowWater: vi.fn(() => 1),
     packSurfaceField: vi.fn(packSurfaceFieldStub(heap)),
     // A sample at x gets (10 + 100·x, 1000, 0, …): tells the hull and debris apart.
-    computeWaterForcesBatch: vi.fn((inPtr: number, outPtr: number, n: number) => {
+    computeWaterForcesBatch: vi.fn((inPtr: number, outPtr: number, refusedPtr: number, n: number) => {
       for (let i = 0; i < n; i += 1) {
         const x = heap[(inPtr >> 2) + i * 8];
         heap.set([10 + 100 * x, 1000, 0, 0, 0, 0, 0, 1], (outPtr >> 2) + i * 8);
+        if (refusedPtr) heap[(refusedPtr >> 2) + i] = 0;
       }
       return 1;
     }),

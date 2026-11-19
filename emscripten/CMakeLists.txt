@@ -20,6 +20,26 @@ set(COMPUTE_SOURCES
 add_library(watershed_compute STATIC ${COMPUTE_SOURCES})
 target_include_directories(watershed_compute PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 
+# One ABI source (#575): abi.def declares every export; scripts/gen-abi.mjs
+# generates abi_generated.h (these wrappers and constants), the TS table and
+# the WASM.md reference from it. --check runs before anything compiles, on
+# every build of either branch, and fails when a generated file drifted or an
+# implementation header's prototype disagrees with abi.def (types, names,
+# order): a parameter swap anywhere is a red native build. Node is on every
+# machine that builds this (pnpm); without it the check is skipped loudly.
+find_program(WATERSHED_NODE node)
+if(WATERSHED_NODE)
+    add_custom_target(abi_check ALL
+        COMMAND "${WATERSHED_NODE}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/gen-abi.mjs" --check
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/.."
+        COMMENT "gen-abi --check: abi.def vs headers and generated files"
+        VERBATIM
+    )
+    add_dependencies(watershed_compute abi_check)
+else()
+    message(WARNING "node not found: skipping gen-abi --check (abi.def vs the headers). Install Node to build with the ABI check.")
+endif()
+
 # One warning set for both branches (#559 B): the wasm32 build is the one that
 # ships, and it is where size_t is 32-bit (the #520 overflow class), so it is
 # held to at least the host's bar. -Wdouble-promotion / -Wimplicit-float-
@@ -215,8 +235,8 @@ if(EMSCRIPTEN)
         "SHELL:-s MODULARIZE=1"
         "SHELL:-s EXPORT_NAME='createWatershedNative'"
         # No --bind (#467): the ws_* exports are EMSCRIPTEN_KEEPALIVE C functions,
-        # bound in TS from the wasmAbi.ts table. -fno-rtti at link too.
-        "SHELL:-fno-rtti"
+        # bound in TS from the generated WASM_ABI table (abi.def, #575). RTTI is a
+        # compile-time flag (above); there is no link-time -fno-rtti.
         # Both build types (#502): Debug's own map lets the symbolicate path be
         # tested against a binary that really traps (ws_trapTest).
         "SHELL:--emit-symbol-map"
@@ -232,10 +252,20 @@ else()
     # -ffp-contract=off keeps FMA contraction out of the golden path so
     # host_smoke.cpp results stay bit-reproducible; see the FP contract note
     # on the Emscripten branch above (#404).
+    #
+    # Same language as the wasm (#575): -fno-exceptions -fno-rtti on every host
+    # target too, so the smoke, the sanitizers and the fuzzers test the dialect
+    # that ships (a throw or a typeid that compiled on the host used to be a
+    # wasm-only error). The optimisation level stays -O2 here, -O3 there: the
+    # digest (native_digest.h) pins that both compute the same bits.
+    set(WATERSHED_HOST_LANG -fno-exceptions -fno-rtti)
     add_executable(watershed_host_smoke host_smoke.cpp)
     target_link_libraries(watershed_host_smoke PRIVATE watershed_compute)
-    target_compile_options(watershed_compute PRIVATE -O2 -ffp-contract=off)
-    target_compile_options(watershed_host_smoke PRIVATE -O2 -ffp-contract=off ${WATERSHED_WARNINGS})
+    target_compile_options(watershed_compute PRIVATE -O2 -ffp-contract=off ${WATERSHED_HOST_LANG})
+    # Host-only instrumentation (#575 D): the dry-front clamp probe in host_smoke.
+    # It records, never writes the field: the digest is unchanged with it on.
+    target_compile_definitions(watershed_compute PUBLIC WATERSHED_SWE_DIAGNOSTICS=1)
+    target_compile_options(watershed_host_smoke PRIVATE -O2 -ffp-contract=off ${WATERSHED_HOST_LANG} ${WATERSHED_WARNINGS})
 
     # #467: the C ABI trusts JS for every pointer and width * height. Host-only
     # checks for that trust:
@@ -263,7 +293,7 @@ else()
             add_executable(watershed_${fuzz_target}_fuzz ${fuzz_target}_fuzz.cpp)
             target_link_libraries(watershed_${fuzz_target}_fuzz PRIVATE watershed_compute)
             target_compile_options(watershed_${fuzz_target}_fuzz PRIVATE
-                -O1 -ffp-contract=off -fsanitize=fuzzer ${WATERSHED_SAN_FLAGS} ${WATERSHED_WARNINGS})
+                -O1 -ffp-contract=off ${WATERSHED_HOST_LANG} -fsanitize=fuzzer ${WATERSHED_SAN_FLAGS} ${WATERSHED_WARNINGS})
             target_link_options(watershed_${fuzz_target}_fuzz PRIVATE -fsanitize=fuzzer ${WATERSHED_SAN_FLAGS})
         endforeach()
     endif()

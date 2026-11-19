@@ -14,8 +14,7 @@
 #include "common.h"
 #include <cstdint>
 
-/** Number of SoA planes. Mirrored by PARTICLE_SOA_PLANES in TypeScript. */
-inline constexpr int PARTICLE_SOA_PLANES = 9;
+// PARTICLE_SOA_PLANES (9) is an ABI constant: abi.def / abi_generated.h.
 inline constexpr int PARTICLE_PX = 0;
 inline constexpr int PARTICLE_PY = 1;
 inline constexpr int PARTICLE_PZ = 2;
@@ -32,22 +31,27 @@ inline constexpr int PARTICLE_SCALE = 8;
 inline constexpr int PARTICLE_MAX_CAPACITY = 1 << 20;
 
 /** Allocate 9 * capacity floats (zeroed). Same allocator as allocateGrid. */
-uintptr_t allocateParticleSoA(int capacity);
+[[nodiscard]] uintptr_t allocateParticleSoA(int capacity);
 
 /** Free a pointer from allocateParticleSoA / allocateGrid. */
 void freeParticleSoA(uintptr_t ptr);
 
 /**
- * Fill [0, active) with a waterfall chute. `seed` is updated (xorshift).
+ * Fill [0, active) with a waterfall chute from xorshift state `seed`, and
+ * write the advanced state to `seedOut` (one uint32).
  * vy is stored as world units per second (negative = falling).
+ *
+ * Returns WS_OK, or WS_REJECTED (nothing written, `seedOut` untouched) for a
+ * null base or seedOut, a bad capacity, or a non-finite scalar. Before ABI 18
+ * this returned the seed, and a rejection returned the input seed — which
+ * read exactly like a successful call.
  */
-uint32_t initWaterfallParticles(uintptr_t base, int capacity, int active,
-                                float width, float height, float depthZ,
-                                float fanSpreadRad, uint32_t seed);
+[[nodiscard]] int initWaterfallParticles(uintptr_t base, int capacity, int active, float width, float height,
+                                         float depthZ, float fanSpreadRad, uint32_t seed, uintptr_t seedOut);
 
-uint32_t stepWaterfallParticles(uintptr_t base, int capacity, int active,
-                                float dt, float width, float height, float depthZ,
-                                uint32_t seed);
+/** Age / Euler / chute recycle for [0, active); status and `seedOut` as initWaterfallParticles. */
+[[nodiscard]] int stepWaterfallParticles(uintptr_t base, int capacity, int active, float dt, float width, float height,
+                                         float depthZ, uint32_t seed, uintptr_t seedOut);
 
 /**
  * Euler + gravity + velocity damp + age for dense slots [0, count).
@@ -60,7 +64,6 @@ uint32_t stepWaterfallParticles(uintptr_t base, int capacity, int active,
  * Returns WS_OK (count 0 included), or WS_REJECTED for a null base, a bad
  * capacity, a negative count, or a non-finite / non-positive dt.
  */
-int stepSplashParticles(uintptr_t base, int capacity, int count,
-                        float dt, float gravityY, float damp);
+[[nodiscard]] int stepSplashParticles(uintptr_t base, int capacity, int count, float dt, float gravityY, float damp);
 
 #endif  // WATERSHED_PARTICLES_H

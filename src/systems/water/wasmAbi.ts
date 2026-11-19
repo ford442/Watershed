@@ -1,18 +1,48 @@
 /**
- * wasmAbi.ts — the TypeScript half of the watershed_native C ABI (#467).
+ * wasmAbi.ts — the TypeScript half of the watershed_native C ABI (#467, #575).
  *
- * `emscripten/bindings.cpp` exports plain `extern "C"` functions named
- * `ws_<name>`; the glue exposes them as `Module._ws_<name>`. `WASM_ABI` below
- * is the one table that lists them: `bindNativeModule` binds every entry onto
- * a `WatershedNativeModule`, and the integration tests assert every entry
- * exists in the binary with the declared arity. Scalar exports are bound
- * directly (no cwrap, no wrapper closure). The one struct result
- * (routedEdgeState) takes a trailing out-pointer; the binding passes a
- * scratch block reserved once per module and reads it back into an object.
+ * The exports are declared once, in emscripten/abi.def; scripts/gen-abi.mjs
+ * writes their branded interface (`WatershedNativeExports`), the `WASM_ABI`
+ * table (arity, out-pointer readers) and the mirrored constants into
+ * wasmAbi.generated.ts, which this module re-exports. What is hand-written
+ * here: the value types the batch helpers use, `bindNativeModule` (binds every
+ * table entry onto a `WatershedNativeModule`, or rejects), and the heap
+ * helpers. Scalar exports are bound directly (no cwrap, no wrapper closure);
+ * an out-pointer result passes a scratch block reserved once per module.
  *
- * Changing a signature means: bindings.cpp, this table, the interface below,
- * ws_getVersion() / WASM_ABI_VERSION, and WASM.md — together.
+ * Changing a signature means editing abi.def and running `pnpm gen:abi`;
+ * `gen-abi --check` (pnpm typecheck) fails until the generated files agree.
  */
+import {
+  WASM_ABI,
+  WS_BAD_ARG,
+  WS_OK,
+  WS_PARTIAL,
+  WS_REJECTED,
+  type WasmAbiEntry,
+  type WasmAbiFunctionName,
+  type WatershedNativeExports,
+} from './wasmAbi.generated';
+
+export {
+  PARTICLE_SOA_PLANES,
+  ROUTING_SUBREACHES,
+  SWE_EVENT_MAX_RADIUS,
+  SWE_EVENT_MAX_STRENGTH,
+  WASM_ABI,
+  WASM_ABI_VERSION,
+  WATER_FORCE_INPUT_STRIDE,
+  WATER_FORCE_OUTPUT_STRIDE,
+  WS_BAD_ARG,
+  WS_OK,
+  WS_PARTIAL,
+  WS_REJECTED,
+  type RoutedEdge,
+  type WasmAbiEntry,
+  type WasmAbiFunctionName,
+} from './wasmAbi.generated';
+export type * from './wasmUnits';
+import type { Ptr } from './wasmUnits';
 
 // ---------------------------------------------------------------------------
 // Value types
@@ -55,58 +85,38 @@ export interface NativeWaterForceConfig {
   turbulenceFrequency: number;
 }
 
-/** routedEdgeState result (ABI 10+). */
-export interface RoutedEdge {
-  /** Free-surface perturbation at the upstream edge (m), the `h` datum. */
-  eta: number;
-  /** Downstream (−Z) inflow speed of that stage over a zero bed (m/s). */
-  speed: number;
-}
-
 // ---------------------------------------------------------------------------
-// Constants mirrored from the C++ headers
+// Statuses
 // ---------------------------------------------------------------------------
-
-/**
- * The ABI this table describes — `WATERSHED_ABI_VERSION` / ws_getVersion() in
- * bindings.cpp. The loader requires the binary to report exactly this number
- * (#533): it used to accept any version at or above a floor, and bumps 15, 16
- * and 17 were all breaking, so a newer foreign or dev binary could bind with
- * mis-sliced arguments. The SHA stamp already pins the shipped pair; this
- * closes the same hole for every other binary. wasmAbiVersion.drift.test.ts
- * reads the C++ constant and compares.
- */
-export const WASM_ABI_VERSION = 17;
-
-/**
- * An export's int status (#533), common.h `WS_OK` / `WS_REJECTED`. A rejected
- * call wrote nothing, so its output buffer still holds the previous result.
- */
-export const WS_OK = 1;
-export const WS_REJECTED = 0;
 
 const warnedRejections = new Set<string>();
 
 /**
- * A native call returned WS_REJECTED (#533): it wrote nothing. Warns once per
- * export per session, in dev only; the caller decides what to read instead
- * (never the untouched output buffer as if it were fresh).
+ * A native call did not return WS_OK (#533, #575). WS_REJECTED / WS_BAD_ARG
+ * wrote nothing; WS_PARTIAL wrote every row but zeroed (and flagged) some.
+ * Warns once per export per session, in dev only; the caller decides what to
+ * read instead (never an untouched output buffer as if it were fresh).
  */
-export function warnRejected(name: string, detail: string): void {
+export function warnRejected(name: string, detail: string, status: number = WS_REJECTED): void {
   if (!import.meta.env.DEV || warnedRejections.has(name)) return;
   warnedRejections.add(name);
-  console.warn(`[watershed_native] ${name} rejected its arguments (${detail}); nothing was written`);
+  const what = status === WS_PARTIAL
+    ? 'refused some rows (zeroed and flagged)'
+    : status === WS_BAD_ARG
+      ? 'got an argument past its documented maximum; nothing was written'
+      : 'rejected its arguments; nothing was written';
+  console.warn(`[watershed_native] ${name} ${what} (${detail})`);
 }
 
-/** Batch ABI stride, in floats. Mirrored by WATER_FORCE_*_STRIDE in common.h. */
-export const WATER_FORCE_INPUT_STRIDE = 8;
-export const WATER_FORCE_OUTPUT_STRIDE = 8;
-
-/** SoA planes in allocateParticleSoA (px…scale). Mirrored by PARTICLE_SOA_PLANES in particles.h. */
-export const PARTICLE_SOA_PLANES = 9;
-
-/** Reservoirs per routed segment — ROUTING_SUBREACHES in emscripten/routing.h. */
-export const ROUTING_SUBREACHES = 4;
+/**
+ * The same heap block, addressed as `T` elements (#575). allocateGrid is the
+ * module's one allocator, so a block of n floats is also the 256 uint32 bins
+ * of a histogram or 4n RGBA8 bytes: say so at the call (`asPtr<U32>(bins)`)
+ * instead of the brand silently passing. Keep the Ptr<F32> for freeGrid.
+ */
+export function asPtr<T extends string>(ptr: number): Ptr<T> {
+  return ptr as Ptr<T>;
+}
 
 /**
  * `count` floats of WASM linear memory at byte offset `ptr`. The heap is a
@@ -123,192 +133,21 @@ export function heapF32(mod: { HEAPF32: Float32Array }, ptr: number, count: numb
 // ---------------------------------------------------------------------------
 
 /**
- * The module as game code sees it. Pointers are WASM heap byte offsets from
- * allocateGrid / allocateParticleSoA. Field conventions (h is a free-surface
- * perturbation, b the bed above the floor datum, …) are documented in
- * emscripten/swe.h and WASM.md.
+ * The module as game code sees it: the generated exports plus the heap views.
+ * Pointers are WASM heap byte offsets from allocateGrid / allocateParticleSoA.
+ * Field conventions (h is a free-surface perturbation, b the bed above the
+ * floor datum, …) are documented in emscripten/swe.h and WASM.md.
  */
-export interface WatershedNativeModule {
+export interface WatershedNativeModule extends WatershedNativeExports {
   // Emscripten typed heap views: one fixed-size heap, so bound once
   HEAPF32: Float32Array;
   HEAP32: Int32Array;
   HEAPU8: Uint8Array;
-
-  /** ABI version (12: plain C ABI; 16: no terrain tile; 17: sub-cycled step, int statuses). */
-  getVersion(): number;
-
-  // ---- Water forces ----
-  /**
-   * Batch ABI.
-   *   input  stride 8: [posX, posY, posZ, velX, velY, velZ, flowDirX, flowDirZ]
-   *   output stride 8: [forceX, forceY, forceZ, buoyancy, drag, flow, turbulence, submergedRatio]
-   * Returns WS_OK, or WS_REJECTED with `output` untouched (count outside [1, 65536]).
-   */
-  computeWaterForcesBatch(
-    inputPtr: number, outputPtr: number, sampleCount: number,
-    flowSpeed: number, waterLevel: number,
-    raftMass: number, raftVolume: number,
-    dragCoefficient: number, frontalArea: number, sideArea: number,
-    timeSeconds: number,
-    turbulenceStrength: number, turbulenceFrequency: number,
-  ): number;
-
-  // ---- Shallow water ----
-  /**
-   * Advance the nonlinear SWE grid by `dt` in ≤ 4 CFL sub-steps (ABI 17).
-   * Returns the time integrated: `dt` itself unless the sub-step cap was hit,
-   * 0 when rejected (dt, g, dx or H not finite and > 0). `bPtr` 0 = flat bed.
-   */
-  stepShallowWater(
-    hPtr: number, uPtr: number, wPtr: number, bPtr: number,
-    width: number, height: number,
-    dt: number, g: number, dx: number, H: number,
-  ): number;
-
-  /** stepShallowWater with the upstream (+Z, last-row) edge held at the routed stage `edgeEta`. */
-  stepShallowWaterInflow(
-    hPtr: number, uPtr: number, wPtr: number, bPtr: number,
-    width: number, height: number,
-    dt: number, g: number, dx: number, H: number,
-    edgeEta: number,
-  ): number;
-
-  /**
-   * Authored hydro source term: kind 0 inflow, 1 vortex, 2 braid, 3 roughness,
-   * 4 surge (ABI 14: a band across the window). Returns WS_OK / WS_REJECTED.
-   */
-  applySWEEvent(
-    hPtr: number, uPtr: number, wPtr: number, bPtr: number,
-    width: number, height: number,
-    dx: number, originX: number, originZ: number, H: number,
-    kind: number, cx: number, cz: number, radius: number, strength: number, dt: number,
-  ): number;
-
-  /**
-   * Scroll h / u / w / b by whole cells: `dst[x, z] = src[x - shiftX, z - shiftZ]`.
-   * Entering cells take (inflowEta, inflowU, inflowW); `bPtr` may be 0.
-   */
-  scrollShallowWater(
-    hPtr: number, uPtr: number, wPtr: number, bPtr: number,
-    width: number, height: number,
-    shiftX: number, shiftZ: number,
-    inflowEta: number, inflowU: number, inflowW: number,
-  ): number;
-
-  /** Pre-size the solver scratch so no step / scroll allocates mid-call. */
-  reserveShallowWaterScratch(width: number, height: number): void;
-
-  /** Allocate `count` zero-initialised floats; returns a byte offset. */
-  allocateGrid(count: number): number;
-  /** Free a pointer returned by allocateGrid. */
-  freeGrid(ptr: number): void;
-
-  // ---- Channel routing (arrays are allocateGrid pointers; each returns WS_OK / WS_REJECTED) ----
-  routeReachSteady(
-    lengthsPtr: number, slopesPtr: number, widthsPtr: number, nSeg: number,
-    Q: number, storagePtr: number, outflowPtr: number,
-  ): number;
-  routeReach(
-    lengthsPtr: number, slopesPtr: number, widthsPtr: number, nSeg: number,
-    inflowQ: number, dt: number, storagePtr: number, outflowPtr: number,
-  ): number;
-  /**
-   * routeReach plus `lateralPtr` (nSeg floats, m³/s) joining each segment at
-   * its top (ABI 14). 0 = no plane = routeReach.
-   */
-  routeReachLateral(
-    lengthsPtr: number, slopesPtr: number, widthsPtr: number, nSeg: number,
-    inflowQ: number, lateralPtr: number, dt: number, storagePtr: number, outflowPtr: number,
-  ): number;
-  routeReachTravelTime(
-    lengthsPtr: number, slopesPtr: number, widthsPtr: number, nSeg: number,
-    Q: number, lagPtr: number,
-  ): number;
-  /** Routed discharge → edge stage η (m) and inflow speed (m/s). Qref ↦ exactly (0, 0). */
-  routedEdgeState(Q: number, Qref: number, H: number, g: number): RoutedEdge;
-
-  // ---- gpu-chores (each returns WS_OK / WS_REJECTED) ----
-  reduceF32Grid(srcPtr: number, count: number, out3Ptr: number): number;
-  histogramF32(srcPtr: number, count: number, rangeMin: number, rangeMax: number, binsPtr: number): number;
-  lumaHistogramU8(rgbaPtr: number, pixelCount: number, binsPtr: number): number;
-  downsampleF32(srcPtr: number, srcW: number, srcH: number, dstPtr: number, dstW: number, dstH: number): number;
-  blurSeparableF32(srcPtr: number, dstPtr: number, width: number, height: number): number;
-  /**
-   * The SWE flow texture's bytes (ABI 17, chores.cpp): RGBA f32 (u, w, depth,
-   * div) per cell into `outRgbaPtr` (4 · width · height floats), the
-   * sweSurfaceField.ts layout. `bPtr` 0 = flat bed. Returns WS_OK / WS_REJECTED.
-   */
-  packSurfaceField(
-    hPtr: number, uPtr: number, wPtr: number, bPtr: number,
-    width: number, height: number, H: number, dx: number, outRgbaPtr: number,
-  ): number;
-
-  // ---- Particle SoA ----
-  allocateParticleSoA(capacity: number): number;
-  freeParticleSoA(ptr: number): void;
-  initWaterfallParticles(
-    base: number, capacity: number, active: number,
-    width: number, height: number, depthZ: number,
-    fanSpreadRad: number, seed: number,
-  ): number;
-  stepWaterfallParticles(
-    base: number, capacity: number, active: number,
-    dt: number, width: number, height: number, depthZ: number, seed: number,
-  ): number;
-  stepSplashParticles(
-    base: number, capacity: number, count: number,
-    dt: number, gravityY: number, damp: number,
-  ): number;
 }
 
 // ---------------------------------------------------------------------------
-// The table
+// Binding the table
 // ---------------------------------------------------------------------------
-
-type HeapViewName = 'HEAPF32' | 'HEAP32' | 'HEAPU8';
-export type WasmAbiFunctionName = Exclude<keyof WatershedNativeModule, HeapViewName>;
-
-type OutReader = (f32: Float32Array, at: number) => unknown;
-
-export interface WasmAbiEntry {
-  /** Parameter count of `ws_<name>` in bindings.cpp, out-pointer included. */
-  readonly arity: number;
-  /** `u32` results come back from wasm as signed i32 and are re-read unsigned. */
-  readonly returns?: 'u32';
-  /** Floats written through the trailing out-pointer, and how to read them back. */
-  readonly out?: { readonly floats: number; readonly read: OutReader };
-}
-
-const readRoutedEdge: OutReader = (f, i) => ({ eta: f[i], speed: f[i + 1] } satisfies RoutedEdge);
-
-/** Every export of the module, keyed by its TS name; the C symbol is `ws_<name>`. */
-export const WASM_ABI = {
-  getVersion: { arity: 0 },
-  computeWaterForcesBatch: { arity: 13 },
-  stepShallowWater: { arity: 10 },
-  stepShallowWaterInflow: { arity: 11 },
-  applySWEEvent: { arity: 16 },
-  scrollShallowWater: { arity: 11 },
-  reserveShallowWaterScratch: { arity: 2 },
-  allocateGrid: { arity: 1 },
-  freeGrid: { arity: 1 },
-  routeReach: { arity: 8 },
-  routeReachLateral: { arity: 9 },
-  routeReachSteady: { arity: 7 },
-  routeReachTravelTime: { arity: 6 },
-  routedEdgeState: { arity: 5, out: { floats: 2, read: readRoutedEdge } },
-  reduceF32Grid: { arity: 3 },
-  histogramF32: { arity: 5 },
-  lumaHistogramU8: { arity: 3 },
-  downsampleF32: { arity: 6 },
-  blurSeparableF32: { arity: 4 },
-  packSurfaceField: { arity: 9 },
-  allocateParticleSoA: { arity: 1 },
-  freeParticleSoA: { arity: 1 },
-  initWaterfallParticles: { arity: 8, returns: 'u32' },
-  stepWaterfallParticles: { arity: 8, returns: 'u32' },
-  stepSplashParticles: { arity: 6 },
-} as const satisfies Record<WasmAbiFunctionName, WasmAbiEntry>;
 
 /** C symbol as the glue exposes it. */
 export function wasmExportName(name: WasmAbiFunctionName): `_ws_${WasmAbiFunctionName}` {
@@ -433,7 +272,7 @@ export function bindNativeModule(raw: RawWatershedModule): WatershedNativeModule
   };
   const outPtr = allocateGrid(outFloats);
   const outAt = outPtr >>> 2;
-  const heap = raw.HEAPF32;
+  const heap = { HEAPF32: raw.HEAPF32, HEAP32: raw.HEAP32 };
 
   // The heap cannot grow, so the glue's views are final: bind them as values.
   const bound: Record<string, unknown> = {
@@ -448,13 +287,21 @@ export function bindNativeModule(raw: RawWatershedModule): WatershedNativeModule
     const out = entry.out;
     if (name === 'allocateGrid') {
       bound[name] = allocateGrid;
+    } else if (out && entry.fold !== undefined) {
+      // A status export whose TS face is its out value (the particle seeds):
+      // a refused call warns and hands back the argument it would replace.
+      const fold = entry.fold;
+      bound[name] = (...args: number[]) => {
+        const status = call(...args, outPtr);
+        if (status === WS_OK) return out.read(heap, outAt);
+        warnRejected(name, `status ${status}`, status);
+        return args[fold];
+      };
     } else if (out) {
       bound[name] = (...args: number[]) => {
         call(...args, outPtr);
         return out.read(heap, outAt);
       };
-    } else if (entry.returns === 'u32') {
-      bound[name] = (...args: number[]) => call(...args) >>> 0;
     } else {
       bound[name] = call;
     }

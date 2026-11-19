@@ -1,0 +1,21 @@
+# C++ style for emscripten/ (#575): checked by pnpm lint:native (clang-format --dry-run --Werror).
+# abi_generated.h is generator output and is not checked; gen-abi --check owns it.
+BasedOnStyle: Google
+IndentWidth: 4
+ColumnLimit: 120
+AccessModifierOffset: -4
+AllowShortFunctionsOnASingleLine: All
+AllowShortIfStatementsOnASingleLine: WithoutElse
+AllowShortLoopsOnASingleLine: true
+DerivePointerAlignment: false
+PointerAlignment: Left
+SortIncludes: Never
+IncludeBlocks: Preserve
+AlignConsecutiveDeclarations: false
+AlignConsecutiveAssignments: false
+AlignTrailingComments: true
+SpacesBeforeTrailingComments: 2
+BinPackArguments: true
+BinPackParameters: true
+ReflowComments: false
+Cpp11BracedListStyle: true

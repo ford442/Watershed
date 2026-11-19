@@ -50,9 +50,8 @@
  * @param H      Still-water depth over a zero bed (m)
  * @returns      Time integrated (s), in [0, dt]
  */
-float stepShallowWater(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t bPtr,
-                       int width, int height,
-                       float dt, float g, float dx, float H);
+[[nodiscard]] float stepShallowWater(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t bPtr, int width,
+                                     int height, float dt, float g, float dx, float H);
 
 /**
  * stepShallowWater with the upstream edge driven by routed discharge (ABI 10,
@@ -72,9 +71,8 @@ float stepShallowWater(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t
  *
  * Returns the time integrated, as stepShallowWater.
  */
-float stepShallowWaterInflow(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t bPtr,
-                             int width, int height,
-                             float dt, float g, float dx, float H, float edgeEta);
+[[nodiscard]] float stepShallowWaterInflow(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t bPtr, int width,
+                                           int height, float dt, float g, float dx, float H, float edgeEta);
 
 /**
  * Authored hydro event source term (ABI 8, additive).
@@ -85,12 +83,20 @@ float stepShallowWaterInflow(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uin
  *       toward `strength` metres and gives the water the downstream speed a bore
  *       of that height carries). Applied in world XZ on the player-centred grid.
  *
- * Returns WS_OK, or WS_REJECTED (nothing written) for a bad extent, a null
- * plane, dx ≤ 0, or a non-finite placement / strength / dt.
+ * Finite or refused (ABI 18): radius, strength and dt above
+ * SWE_EVENT_MAX_RADIUS / SWE_EVENT_MAX_STRENGTH / SWE_EVENT_MAX_DT return
+ * WS_BAD_ARG and write nothing. The maxima are the authored ranges
+ * (level.schema.json, hydroEvents.ts parseHydroEvents), so a shared river that
+ * passes the validator is never refused here; before ABI 18 a radius of 3e38
+ * overflowed r*r and left every cell non-finite under WS_OK. Below the range
+ * the old clamps stay (radius 0.5, strength and dt 0).
+ *
+ * Returns WS_OK; WS_BAD_ARG as above; or WS_REJECTED (nothing written) for a
+ * bad extent, a null plane, dx ≤ 0, or a non-finite placement / strength / dt.
  */
-int applySWEEvent(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t bPtr,
-                  int width, int height, float dx, float originX, float originZ, float H,
-                  int kind, float cx, float cz, float radius, float strength, float dt);
+[[nodiscard]] int applySWEEvent(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t bPtr, int width, int height,
+                                float dx, float originX, float originZ, float H, int kind, float cx, float cz,
+                                float radius, float strength, float dt);
 
 /**
  * Scroll the whole field through the grid's index frame by whole cells
@@ -129,9 +135,8 @@ int applySWEEvent(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t bPtr
  * @param bPtr  Bed plane, or 0 to leave the bed alone (flat bed)
  * @returns     WS_OK (a zero shift included), or WS_REJECTED for a bad extent / null plane
  */
-int scrollShallowWater(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t bPtr,
-                       int width, int height, int shiftX, int shiftZ,
-                       float inflowEta, float inflowU, float inflowW);
+[[nodiscard]] int scrollShallowWater(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t bPtr, int width,
+                                     int height, int shiftX, int shiftZ, float inflowEta, float inflowU, float inflowW);
 
 /**
  * Size the solver's reused scratch (step, upstream-edge ghosts, scroll temp)
@@ -145,6 +150,21 @@ void reserveShallowWaterScratch(int width, int height);
 // SWE_MAX_GRID_EXTENT (the largest width / height any entry point accepts)
 // lives in common.h since #511: chores.cpp guards against it too.
 
+#ifdef WATERSHED_SWE_DIAGNOSTICS
+/**
+ * Host builds only, never the wasm (#575 D): the largest depth (m) the step's
+ * max(0, d) clamp added to one cell since the last call — mass the HLL update
+ * would have taken below zero, created instead. Reading it resets it.
+ */
+float sweTakeLargestDepthClamp();
+/**
+ * Host builds only (#575 D): the total depth (m, summed over cells and steps)
+ * the dry pin discarded since the last call — a cell left with depth in
+ * (0, SWE_DRY_DEPTH] is written back exactly dry. Reading it resets it.
+ */
+double sweTakeDryCutDepth();
+#endif
+
 /** Depth below which a cell counts as dry (m). Mirrored by host goldens. */
 extern const float SWE_DRY_DEPTH;
 
@@ -153,7 +173,7 @@ extern const float SWE_DRY_DEPTH;
  * offset, or 0 for count <= 0, count > WS_MAX_ELEMENTS, or an exhausted heap
  * (the TS binding turns a 0 for count > 0 into WasmHeapExhaustedError).
  */
-uintptr_t allocateGrid(int count);
+[[nodiscard]] uintptr_t allocateGrid(int count);
 
 /** Free a pointer previously returned by allocateGrid. */
 void freeGrid(uintptr_t ptr);

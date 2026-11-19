@@ -35,7 +35,7 @@
  * helpers only; the batch half needs a module and runs only in the sim worker.
  */
 import { telemetryNowMs } from '../utils/wallClock';
-import { WATER_FORCE_INPUT_STRIDE, WATER_FORCE_OUTPUT_STRIDE, WS_OK, allocateGrids, heapF32, warnRejected, type NativeWaterForceConfig, type NativeWaterForceResult, type WatershedNativeModule } from '../systems/water/wasmAbi';
+import { WATER_FORCE_INPUT_STRIDE, WATER_FORCE_OUTPUT_STRIDE, WS_OK, WS_PARTIAL, allocateGrids, heapF32, warnRejected, type F32, type Kilograms, type Metres, type MetresPerSecond, type NativeWaterForceConfig, type NativeWaterForceResult, type Ptr, type WatershedNativeModule } from '../systems/water/wasmAbi';
 import {
   SWE_STAGE_SPEED_BOOST,
   sampleSWEFlow,
@@ -50,6 +50,11 @@ export const FORCE_RESULT_STRIDE = WATER_FORCE_OUTPUT_STRIDE + 6;
 /** Result flag bits (slot WATER_FORCE_OUTPUT_STRIDE + 5). */
 export const FORCE_FLAG_WET = 1;
 export const FORCE_FLAG_SWE = 2;
+/**
+ * The native batch refused this row (ABI 18): a non-finite input or result.
+ * Its forces are zeros — skip it; it is never a NaN applied to a Rapier body.
+ */
+export const FORCE_FLAG_REFUSED = 4;
 
 /** Config values the native call takes, in call order. */
 const CONFIG_WIDTH = 10;
@@ -109,6 +114,11 @@ export function readForceResult(results: Float64Array, index: number): NativeWat
 }
 
 /** The flow sample the worker used for result `index`. */
+/** The worker's native batch refused result `index` (FORCE_FLAG_REFUSED): apply nothing. */
+export function isForceRefused(results: Float64Array, index: number): boolean {
+  return (results[index * FORCE_RESULT_STRIDE + WATER_FORCE_OUTPUT_STRIDE + 5] & FORCE_FLAG_REFUSED) !== 0;
+}
+
 export function readForceFlow(results: Float64Array, index: number): SWEFlowSample {
   const o = index * FORCE_RESULT_STRIDE + WATER_FORCE_OUTPUT_STRIDE;
   const flags = results[o + 5];
@@ -130,17 +140,20 @@ export function readForceFlow(results: Float64Array, index: number): SWEFlowSamp
 /** Heap input/output for up to `capacity` samples; grows, never shrinks. */
 export interface SimForceBatch {
   readonly capacity: number;
-  readonly inputPtr: number;
-  readonly outputPtr: number;
+  readonly inputPtr: Ptr<F32>;
+  readonly outputPtr: Ptr<F32>;
+  readonly refusedPtr: Ptr<F32>;
   dispose(): void;
 }
 
 interface MutableSimForceBatch extends SimForceBatch {
   capacity: number;
-  inputPtr: number;
-  outputPtr: number;
+  inputPtr: Ptr<F32>;
+  outputPtr: Ptr<F32>;
+  refusedPtr: Ptr<F32>;
   input: Float32Array;
   output: Float32Array;
+  refused: Float32Array;
   configs: Float64Array;
   disposed: boolean;
 }
@@ -150,8 +163,10 @@ export function createSimForceBatch(wasm: WatershedNativeModule, capacity = 4): 
     capacity: 0,
     inputPtr: 0,
     outputPtr: 0,
+    refusedPtr: 0,
     input: new Float32Array(0),
     output: new Float32Array(0),
+    refused: new Float32Array(0),
     configs: new Float64Array(0),
     disposed: false,
     dispose() {
@@ -159,8 +174,10 @@ export function createSimForceBatch(wasm: WatershedNativeModule, capacity = 4): 
       batch.disposed = true;
       if (batch.inputPtr) wasm.freeGrid(batch.inputPtr);
       if (batch.outputPtr) wasm.freeGrid(batch.outputPtr);
+      if (batch.refusedPtr) wasm.freeGrid(batch.refusedPtr);
       batch.inputPtr = 0;
       batch.outputPtr = 0;
+      batch.refusedPtr = 0;
     },
   };
   reserve(wasm, batch, capacity);
@@ -172,20 +189,24 @@ function reserve(wasm: WatershedNativeModule, batch: MutableSimForceBatch, count
   const capacity = Math.max(count, batch.capacity * 2, 4);
   if (batch.inputPtr) wasm.freeGrid(batch.inputPtr);
   if (batch.outputPtr) wasm.freeGrid(batch.outputPtr);
-  // Freed above: until both new blocks exist the batch owns nothing, so a
+  if (batch.refusedPtr) wasm.freeGrid(batch.refusedPtr);
+  // Freed above: until the new blocks exist the batch owns nothing, so a
   // throw cannot leave a freed pointer behind to be freed again.
   batch.inputPtr = 0;
   batch.outputPtr = 0;
+  batch.refusedPtr = 0;
   batch.capacity = 0;
-  [batch.inputPtr, batch.outputPtr] = allocateGrids(wasm, [
+  [batch.inputPtr, batch.outputPtr, batch.refusedPtr] = allocateGrids(wasm, [
     capacity * WATER_FORCE_INPUT_STRIDE,
     capacity * WATER_FORCE_OUTPUT_STRIDE,
+    capacity,
   ]);
   batch.capacity = capacity;
   batch.configs = new Float64Array(capacity * CONFIG_WIDTH);
   // The heap is fixed-size: views made with the blocks last as long as they do.
   batch.input = heapF32(wasm, batch.inputPtr, capacity * WATER_FORCE_INPUT_STRIDE);
   batch.output = heapF32(wasm, batch.outputPtr, capacity * WATER_FORCE_OUTPUT_STRIDE);
+  batch.refused = heapF32(wasm, batch.refusedPtr, capacity);
 }
 
 function sameAtFloat32(configs: Float64Array, a: number, b: number): boolean {
@@ -261,13 +282,17 @@ export function computeSimForces(
   for (let i = 1; i <= count; i += 1) {
     if (i < count && sameAtFloat32(configs, start * CONFIG_WIDTH, i * CONFIG_WIDTH)) continue;
     const c = start * CONFIG_WIDTH;
+    const flowSpeed: MetresPerSecond = configs[c + 0];
+    const waterLevel: Metres = configs[c + 1];
+    const raftMass: Kilograms = configs[c + 2];
     const status = wasm.computeWaterForcesBatch(
       batch.inputPtr + start * WATER_FORCE_INPUT_STRIDE * 4,
       batch.outputPtr + start * WATER_FORCE_OUTPUT_STRIDE * 4,
+      batch.refusedPtr + start * 4,
       i - start,
-      configs[c + 0],
-      configs[c + 1],
-      configs[c + 2],
+      flowSpeed,
+      waterLevel,
+      raftMass,
       configs[c + 3],
       configs[c + 4],
       configs[c + 5],
@@ -276,21 +301,26 @@ export function computeSimForces(
       configs[c + 8],
       configs[c + 9],
     );
-    if (status !== WS_OK) {
+    if (status === WS_PARTIAL) {
+      // Some rows refused (ABI 18): already zeros, flagged in `refused`.
+      warnRejected('computeWaterForcesBatch', `count=${i - start}`, status);
+    } else if (status !== WS_OK) {
       // Rejected (#533): the output block still holds the last call's forces.
       // Zero this run's samples instead of handing those back as fresh.
-      warnRejected('computeWaterForcesBatch', `count=${i - start}`);
+      warnRejected('computeWaterForcesBatch', `count=${i - start}`, status);
       batch.output.fill(0, start * WATER_FORCE_OUTPUT_STRIDE, i * WATER_FORCE_OUTPUT_STRIDE);
+      batch.refused.fill(1, start, i);
     }
     calls += 1;
     start = i;
   }
 
-  const { output } = batch;
+  const { output, refused } = batch;
   for (let i = 0; i < count; i += 1) {
     const o = i * WATER_FORCE_OUTPUT_STRIDE;
     const r = i * FORCE_RESULT_STRIDE;
     for (let k = 0; k < WATER_FORCE_OUTPUT_STRIDE; k += 1) out[r + k] = output[o + k];
+    if (refused[i] !== 0) out[r + WATER_FORCE_OUTPUT_STRIDE + 5] |= FORCE_FLAG_REFUSED;
   }
   return { calls, computeMicros: Math.round((now() - t0) * 1000) };
 }
