@@ -147,8 +147,9 @@ export const PauseMenu: React.FC<PauseMenuProps> = ({ onResume, onRestart, onQui
               // axe's label-content-name-mismatch reads aria-hidden text as visible).
               aria-label={`${t('pause.resume')} ${t('pause.keyEnter')} — ${t('pause.resumeLabel')}`}
             >
-              {t('pause.resume')}
-              {/* Hidden from the tree only so the name above is not read twice. */}
+              {t('pause.resume')}{' '}
+              {/* Hidden from the tree only so the name above is not read twice. The
+                  space keeps axe's visible text "RESUME ENTER", not "RESUMEENTER". */}
               <span className="pause-menu-keyhint" aria-hidden="true">{t('pause.keyEnter')}</span>
             </button>
 
@@ -157,7 +158,7 @@ export const PauseMenu: React.FC<PauseMenuProps> = ({ onResume, onRestart, onQui
               onClick={() => setConfirmRestart(true)}
               aria-label={`${t('pause.restart')} R — ${t('pause.restartLabel')}`}
             >
-              {t('pause.restart')}
+              {t('pause.restart')}{' '}
               <span className="pause-menu-keyhint" aria-hidden="true">{/* the physical key, not a word */ 'R'}</span>
             </button>
 
