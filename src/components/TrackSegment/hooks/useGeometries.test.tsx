@@ -4,7 +4,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { getTrackBiomeProfile } from '../../../configs/TrackBiomes';
 import type { SimTileResult } from '../../../sim/simWorkerProtocol';
 import { buildSegmentMeshBuffers, contextFromSpec, type SegmentMeshSpec } from '../../../terrain/segmentMeshBuild';
-import { buildSegmentPlacements, type SegmentPlacementInput } from '../../../terrain/placement';
+import { buildSegmentPlacements } from '../../../terrain/placement';
+import type { SegmentPlacementInput } from '../../../terrain/placement/inputs';
 import { placementInputFor } from './usePlacementData';
 import type { UseGeometriesParams } from '../types';
 

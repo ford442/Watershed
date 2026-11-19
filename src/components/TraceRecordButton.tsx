@@ -11,13 +11,13 @@ import { lazyModule } from '../utils/lazyModule';
  */
 const control = lazyModule(() => import('../debug/trace/traceControl'));
 
-export function traceControlsEnabled(): boolean {
+function traceControlsEnabled(): boolean {
   const flags = queryFlags();
   return flags.debug || flags.trace;
 }
 
-/** Shift+F3: record 10 s and save, or stop and save a running recording. */
-export function toggleTraceRecording(): void {
+/** Record 10 s and save, or stop and save a running recording (Shift+F3 does the same: MovementReadout.tsx). */
+function toggleTraceRecording(): void {
   if (!traceControlsEnabled()) return;
   void control.load().then((m) => m.recordAndSave());
 }

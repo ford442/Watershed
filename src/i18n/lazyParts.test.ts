@@ -16,9 +16,14 @@ import { userRivers } from './en/lazy/userRivers';
 
 const lazy = { captions, pauseMenu, runResults, settingsPanel, todaysRiver, touchControls, userRivers };
 
-const OWNER: Record<keyof typeof lazy, { file: string; alsoNames?: string[] }> = {
+/** `alsoUnder`: a folder of modules only the owner imports, so they ride in its chunk (#559 C). */
+const OWNER: Record<keyof typeof lazy, { file: string; alsoNames?: string[]; alsoUnder?: string }> = {
   captions: { file: 'src/components/CaptionLayer.tsx' },
-  settingsPanel: { file: 'src/ui/SettingsPanel.tsx', alsoNames: ['src/systems/settings/settingsDerive.ts'] },
+  settingsPanel: {
+    file: 'src/ui/SettingsPanel.tsx',
+    alsoNames: ['src/systems/settings/settingsDerive.ts'],
+    alsoUnder: 'src/ui/settingsPanel/',
+  },
   pauseMenu: { file: 'src/components/PauseMenu.tsx' },
   runResults: { file: 'src/components/RunResultsPanel.tsx' },
   touchControls: { file: 'src/components/TouchControls.tsx' },
@@ -34,7 +39,7 @@ const sources = execSync("git ls-files -co --exclude-standard 'src/**/*.ts' 'src
 
 describe('lazy English parts', () => {
   for (const [name, part] of Object.entries(lazy) as [keyof typeof lazy, Record<string, unknown>][]) {
-    const { file, alsoNames = [] } = OWNER[name];
+    const { file, alsoNames = [], alsoUnder } = OWNER[name];
     const allowed = new Set([file, ...alsoNames]);
 
     it(`${name} is registered by ${file}`, () => {
@@ -47,7 +52,7 @@ describe('lazy English parts', () => {
       for (const key of Object.keys(part)) {
         const prefixes = key.split('.').slice(0, -1).map((_, i, a) => a.slice(0, i + 1).join('.') + '.');
         for (const { file: f, text } of sources) {
-          if (allowed.has(f)) continue;
+          if (allowed.has(f) || (alsoUnder !== undefined && f.startsWith(alsoUnder))) continue;
           if (text.includes(`'${key}'`) || prefixes.some((p) => text.includes('`' + p + '${'))) offenders.push(`${key} in ${f}`);
         }
       }
