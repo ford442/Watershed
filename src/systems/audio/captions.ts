@@ -31,6 +31,8 @@ export const CAPTION_FOR_SOUND: Readonly<Record<string, { id: string; priority: 
   land_hard: { id: 'hardLanding', priority: 1 },
   land_impact: { id: 'hardLanding', priority: 2 },
   boost: { id: 'boost', priority: 1 },
+  // The dam's horn (#578 A): its own line, beside the telegraph's countdown.
+  dam_horn: { id: 'damHorn', priority: 2 },
 };
 
 /** Within this lateral share of the distance a sound reads as "ahead". */

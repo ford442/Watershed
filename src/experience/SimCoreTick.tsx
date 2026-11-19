@@ -49,8 +49,15 @@ export interface SimCoreTickProps {
 }
 
 export function SimCoreTick({ debug, vehicleRef }: SimCoreTickProps): null {
+  // Only what the systems read (SimDebugStages). The controller object itself is
+  // new whenever any stage reports loading / success (its `stageRuntime`); keyed
+  // on it, every SimCore system was unregistered and rebuilt on each report, and
+  // a system that keeps its state in itself — the hazards' lifecycles (#578 A) —
+  // went back to dormant every second. These two change only when a stage is
+  // toggled (`?debug=1`).
+  const { isStageEnabled, setStageFailure } = debug;
   useEffect(() => {
-    const offs = createSimSystems(debug).map((system) => simCore.register(system));
+    const offs = createSimSystems({ isStageEnabled, setStageFailure }).map((system) => simCore.register(system));
     simCore.ctx.water.stageAt = sampleSweStage;
     simCore.ctx.game = storeSimGame;
     simCore.ctx.debug = tapSimDebug;
@@ -59,7 +66,7 @@ export function SimCoreTick({ debug, vehicleRef }: SimCoreTickProps): null {
       offReset();
       for (const off of offs) off();
     };
-  }, [debug]);
+  }, [isStageEnabled, setStageFailure]);
 
   useFrame((state, delta) => {
     const traced = traceStart();

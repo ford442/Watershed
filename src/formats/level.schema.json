@@ -889,6 +889,16 @@
               "wetness": { "type": "number", "minimum": 0, "maximum": 1 },
               "chill": { "type": "number", "minimum": 0, "maximum": 1 }
             }
+          },
+          "release": {
+            "type": "object",
+            "description": "Water the hazard sends down the river while active (#578 A): discharge (m3/s) joins the routed chain at the top of the hazard's segment, the gates opening and closing over rampSeconds (default 2). stage is where the telegraph band is drawn, in m above the still water sheet; hydroContrast.release.test.ts pins it to the router's rating at the hazard's hours. discharge and stage are both needed; like a trigger's number, a missing one is left to parseHazards (which drops the release) and registry.contract.test.ts, to keep the compiled validator small.",
+            "additionalProperties": false,
+            "properties": {
+              "discharge": { "type": "number", "minimum": 0, "maximum": 400 },
+              "rampSeconds": { "type": "number", "minimum": 0, "maximum": 30 },
+              "stage": { "type": "number", "minimum": 0, "maximum": 2 }
+            }
           }
         }
       }

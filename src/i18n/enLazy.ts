@@ -4,6 +4,7 @@
  * for real and registers it (see en.ts).
  */
 import type { captions } from './en/lazy/captions';
+import type { hazards } from './en/lazy/hazards';
 import type { pauseMenu } from './en/lazy/pauseMenu';
 import type { runResults } from './en/lazy/runResults';
 import type { settingsPanel } from './en/lazy/settingsPanel';
@@ -12,6 +13,7 @@ import type { touchControls } from './en/lazy/touchControls';
 import type { userRivers } from './en/lazy/userRivers';
 
 export type LazyEnglish = typeof captions &
+  typeof hazards &
   typeof pauseMenu &
   typeof runResults &
   typeof settingsPanel &

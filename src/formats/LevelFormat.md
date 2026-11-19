@@ -384,6 +384,26 @@ Optional. Set-pieces that read the simulated water. Each hazard runs
 | `telegraphSeconds` | Warning before it is dangerous — **minimum 1.5 s** (default 2.5) |
 | `activeSeconds`, `radius` | How long it is dangerous, and how close the player must be to be reached |
 | `consequence` | `wetness` added / `chill` taken off core temperature, once per activation — never a reset |
+| `release` | Water the hazard sends while active (#578 A): `discharge` (m³/s) joins the routed chain at the top of `segmentIndex`'s reach, the gates opening and closing over `rampSeconds` (default 2). `stage` is the band height in m above the still water sheet — where the telegraph draws the waterline; `hydroContrast.release.test.ts` pins it to the router's rating (±0.1 m) at every hour the hazard is live. Both `discharge` and `stage` are needed (the parser drops a release missing one; `registry.contract.test.ts` fails a map that ships one). A release reaches the player only once the stage under them is at least half of `stage` (no SWE field: the radius alone). One release live per hour per map |
+
+The hydro dam's 14:00 release, as shipped (`hydro_dam.json`):
+
+```json
+{
+  "id": "hydro-dam-release",
+  "kind": "damRelease",
+  "segmentIndex": 4,
+  "hours": [14],
+  "hydroEventId": "hydro-dam-pulse",
+  "armDistance": 220,
+  "radius": 60,
+  "trigger": { "type": "proximity", "distance": 150 },
+  "telegraphSeconds": 8,
+  "activeSeconds": 14,
+  "release": { "discharge": 60, "rampSeconds": 2.5, "stage": 1.0 },
+  "consequence": { "wetness": 0.9, "chill": 0.35 }
+}
+```
 
 ---
 

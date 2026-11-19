@@ -346,6 +346,23 @@
       "strength": 1.8
     }
   ],
+  "hazards": [
+    {
+      "id": "hydro-dam-release",
+      "kind": "damRelease",
+      "segmentIndex": 4,
+      "centerT": 0.5,
+      "hours": [14],
+      "hydroEventId": "hydro-dam-pulse",
+      "armDistance": 220,
+      "radius": 60,
+      "trigger": { "type": "proximity", "distance": 150 },
+      "telegraphSeconds": 8,
+      "activeSeconds": 14,
+      "release": { "discharge": 60, "rampSeconds": 2.5, "stage": 1.0 },
+      "consequence": { "wetness": 0.9, "chill": 0.35 }
+    }
+  ],
   "spawns": {
     "start": {
       "position": [0, 4, -8],

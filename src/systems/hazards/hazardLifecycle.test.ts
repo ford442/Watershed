@@ -3,12 +3,14 @@ import { SIM_DT } from '../../sim/core/SimCore';
 import type { HydroEvent } from '../water/hydroEvents';
 import {
   createHazardRuntime,
-  isHazardLiveAtHour,
+  hazardPhaseSecondsLeft,
+  hazardReleaseDischarge,
   resetHazardRuntime,
   stepHazard,
   type HazardStepEvent,
   type HazardStepInput,
 } from './hazardLifecycle';
+import { isHazardLiveAtHour } from './hazardHours';
 import { parseHazards } from './parseHazards';
 import { HAZARD_MIN_TELEGRAPH_SECONDS, type HazardConfig } from './hazardTypes';
 
@@ -152,5 +154,60 @@ describe('isHazardLiveAtHour', () => {
     expect(isHazardLiveAtHour(config, 9, [surge])).toBe(false);
     expect(isHazardLiveAtHour(config, 14, [])).toBe(false); // a missing event is never live
     expect(isHazardLiveAtHour(hazard({ hydroEventId: 'dam-surge', hours: [15] }), 14, [surge])).toBe(false);
+  });
+});
+
+describe('hazard release (#578 A)', () => {
+  const RELEASE = { discharge: 60, rampSeconds: 1, stage: 1 };
+
+  it('releases nothing until active, ramps open, holds, ramps shut, and nothing once spent', () => {
+    const rt = createHazardRuntime(hazard({ release: RELEASE, activeSeconds: 4 }));
+    expect(stepUntilEvent(rt, at(30)).event).toBe('armed');
+    expect(hazardReleaseDischarge(rt)).toBe(0);
+    expect(stepUntilEvent(rt, at(30)).event).toBe('telegraph');
+    expect(hazardReleaseDischarge(rt)).toBe(0);
+    expect(stepUntilEvent(rt, at(30)).event).toBe('active');
+
+    const series: number[] = [];
+    let event: HazardStepEvent = null;
+    while (event !== 'spent') {
+      event = stepHazard(rt, at(30), SIM_DT);
+      series.push(hazardReleaseDischarge(rt));
+    }
+    expect(series.at(-1)).toBe(0);
+    expect(Math.max(...series)).toBe(RELEASE.discharge);
+    // Opening over the first second: never a step.
+    for (let i = 1; i < 60; i += 1) expect(series[i]! - series[i - 1]!).toBeLessThanOrEqual(RELEASE.discharge * SIM_DT * 1.01);
+    expect(series[30]).toBeCloseTo(RELEASE.discharge * 31 * SIM_DT, 6);
+    // Held between the ramps.
+    expect(series[120]).toBe(RELEASE.discharge);
+  });
+
+  it('a hazard without a release never releases', () => {
+    const rt = createHazardRuntime(hazard());
+    rt.phase = 'active';
+    rt.phaseTime = 1;
+    expect(hazardReleaseDischarge(rt)).toBe(0);
+  });
+
+  it('counts the telegraph and the active phase down on the sim clock', () => {
+    const rt = createHazardRuntime(hazard({ telegraphSeconds: 2, activeSeconds: 3 }));
+    expect(hazardPhaseSecondsLeft(rt)).toBeNull();
+    stepUntilEvent(rt, at(30));
+    expect(hazardPhaseSecondsLeft(rt)).toBeNull(); // armed: no fixed end
+    stepUntilEvent(rt, at(30));
+    expect(hazardPhaseSecondsLeft(rt)).toBeCloseTo(2, 6);
+    for (let i = 0; i < 30; i += 1) stepHazard(rt, at(30), SIM_DT);
+    expect(hazardPhaseSecondsLeft(rt)).toBeCloseTo(1.5, 6);
+  });
+
+  it('reaches the player only where the input says it can (the surge has to arrive)', () => {
+    const rt = createHazardRuntime(hazard());
+    stepUntilEvent(rt, at(30));
+    stepUntilEvent(rt, at(30));
+    expect(stepUntilEvent(rt, at(30)).event).toBe('active');
+    // In the radius, but the water is not up yet: no hit, for as long as that holds.
+    for (let i = 0; i < 60; i += 1) expect(stepHazard(rt, { ...at(2), reachable: false }, SIM_DT)).toBeNull();
+    expect(stepHazard(rt, { ...at(2), reachable: true }, SIM_DT)).toBe('hit');
   });
 });

@@ -29,7 +29,7 @@ import type { NativeWaterForceConfig, NativeWaterForceResult, WatershedNativeMod
 import { createWaterForceBatch } from '../systems/water/WatershedWasm';
 import { createWasmSweSim, type SweEventCall, type SweSim } from '../systems/water/sweSim';
 import { SWE_REST_INFLOW } from '../systems/water/sweScroll';
-import { createRiverRouter, routedEdgeInflow } from '../systems/water/riverRouter';
+import { createRiverRouter, routedEdgeInflow, type RouterRelease, type RouterWeather } from '../systems/water/riverRouter';
 import { getRoutingReach } from '../systems/map/routingReach';
 import { DEFAULT_FORECAST_INPUTS } from '../constants/forecast';
 import {
@@ -395,9 +395,17 @@ describeIntegration('sim worker (wasm-worker) vs main-thread stepper (wasm-main)
           kind: frame % 4, cx: originX + 12, cz: originZ + 8, radius: 3, strength: 0.5, dt: 1 / 60,
         }];
         const input = { dt: 1 / 60, g, H, originX, originZ, events };
+        // The director's weather and a hazard's release reach the worker's router
+        // on the STEP (#578 A): a storm over reach 2 for a stretch, the dam's
+        // gates open on reach 1 for another, overlapping.
+        const weather: RouterWeather | null =
+          frame >= 20 && frame < 40 ? { type: 'storm', intensity: 0.9, overChainIndex: 2 } : null;
+        const release: RouterRelease | null = frame >= 10 && frame < 45 ? { discharge: 40 + frame, chainIndex: 1 } : null;
+        mainRouter.setWeather(weather);
+        mainRouter.setRelease(release);
         mainRouter.advance(input.dt);
         main.step({ ...input, edgeEta: routed?.edgeEta });
-        viaWorker.stepRouted(input, { chainIndex });
+        viaWorker.stepRouted(input, { chainIndex, weather, ...(release ? { release } : {}) });
 
         // Forces after the step, on the stepped field — as the frame posts them.
         const bodies = bodiesAt(originX, originZ, frame / 60, rand);

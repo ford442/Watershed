@@ -10,7 +10,7 @@
 import { lazyModule } from '../utils/lazyModule';
 import { useInputStore } from './InputHub';
 
-export type HapticKind = 'flow' | 'impact' | 'wipeout';
+export type HapticKind = 'flow' | 'impact' | 'warn' | 'wipeout';
 
 const impl = lazyModule(() => import('./hapticsImpl'));
 

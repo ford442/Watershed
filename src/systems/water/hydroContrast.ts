@@ -335,6 +335,36 @@ export function routedEdgeEtaAt(
 }
 
 /**
+ * The routed edge stage a window in `mapId` segment `segmentIndex` sees at
+ * launch `hour` while a hazard's gates there release `discharge` m³/s
+ * (#578 A): the release joins the chain at that segment's reach
+ * (`RiverRouter.setRelease`), so the window there carries it at once. The
+ * router advances `seconds` with the gates open — the hydrograph's hold — so
+ * the stage is the release's plateau, the one the telegraph band is drawn at.
+ */
+export function routedReleaseEdgeEtaAt(
+  wasm: WatershedNativeModule,
+  mapId: MapRegistryId,
+  segmentIndex: number,
+  hour: number,
+  discharge: number,
+  seconds = 4,
+): number {
+  const reach = getRoutingReach();
+  const router = createRiverRouter(wasm, reach, hour);
+  if (!router) throw new Error('routedReleaseEdgeEtaAt: binary has no routing exports (ABI < 10)');
+  try {
+    const k = routingChainIndex(reach, mapId, segmentIndex);
+    if (k === null) throw new Error(`routedReleaseEdgeEtaAt: ${mapId} is not on the routing chain`);
+    router.setRelease({ discharge, chainIndex: k });
+    for (let t = 0; t < seconds; t += STEP_DT) router.advance(STEP_DT);
+    return router.edgeState(k, SWE_MEAN_DEPTH, 9.80665).eta;
+  } finally {
+    router.dispose();
+  }
+}
+
+/**
  * Two routed edge stages, each driven into a fresh contrast grid by `step`:
  * the hour contrast as the solver sees it through its boundary, not through an
  * authored disk. Same mesh / hull split as `measureHydroHourContrast`.

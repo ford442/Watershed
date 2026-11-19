@@ -12,6 +12,7 @@
  * on one step and can reach the player from the next.
  */
 import {
+  HAZARD_DEFAULT_RELEASE_RAMP_SECONDS,
   HAZARD_DEFAULT_ACTIVE_SECONDS,
   HAZARD_DEFAULT_ARM_DISTANCE,
   HAZARD_DEFAULT_RADIUS,
@@ -21,7 +22,6 @@ import {
   type HazardPhase,
   type HazardTrigger,
 } from './hazardTypes';
-import { isHydroEventActiveAtHour, normalizeHour, type HydroEvent } from '../water/hydroEvents';
 
 /** A phase's clock this close under its length still ends it (float residue of 1/60 sums). */
 const PHASE_EPSILON = 1e-6;
@@ -43,28 +43,16 @@ export interface HazardStepInput {
   distance: number | null;
   /** SWE stage η (m) at the anchor; null with no field there. */
   stage: number | null;
+  /**
+   * Whether an active hazard can reach the player where they are (#578 A): a
+   * release reaches only once its water has (the stage under the player has
+   * risen). Absent = yes — the radius alone decides, as before.
+   */
+  reachable?: boolean;
 }
 
 /** What a step did: entered a phase, reached the player, or nothing. */
 export type HazardStepEvent = HazardPhase | 'hit' | null;
-
-/**
- * Whether a hazard runs at all on a run launched at `hour`. One that follows a
- * hydro event is live exactly when that event is (and, if it also names
- * `hours`, at those of them); a missing event id means never — the registry
- * contract test keeps authored maps from shipping one.
- */
-export function isHazardLiveAtHour(
-  config: HazardConfig,
-  hour: number,
-  hydroEvents: readonly HydroEvent[],
-): boolean {
-  const h = normalizeHour(hour);
-  if (config.hours && config.hours.length > 0 && !config.hours.some((c) => normalizeHour(c) === h)) return false;
-  if (config.hydroEventId === undefined) return true;
-  const event = hydroEvents.find((e) => e.id === config.hydroEventId);
-  return event !== undefined && isHydroEventActiveAtHour(event, h);
-}
 
 export function createHazardRuntime(config: HazardConfig): HazardRuntime {
   return { config, phase: 'dormant', phaseTime: 0, hit: false };
@@ -124,7 +112,7 @@ export function stepHazard(rt: HazardRuntime, input: HazardStepInput, dt: number
       if (rt.phaseTime >= (c.activeSeconds ?? HAZARD_DEFAULT_ACTIVE_SECONDS) - PHASE_EPSILON) {
         return enter(rt, 'spent');
       }
-      if (!rt.hit && within(input.distance, c.radius ?? HAZARD_DEFAULT_RADIUS)) {
+      if (!rt.hit && input.reachable !== false && within(input.distance, c.radius ?? HAZARD_DEFAULT_RADIUS)) {
         rt.hit = true;
         return 'hit';
       }
@@ -132,4 +120,42 @@ export function stepHazard(rt: HazardRuntime, input: HazardStepInput, dt: number
     case 'spent':
       return null;
   }
+}
+
+/**
+ * Seconds left in the hazard's current phase on the sim clock: the telegraph's
+ * countdown, the active phase's remaining danger. Null for a phase with no
+ * fixed end (dormant, armed, spent).
+ */
+export function hazardPhaseSecondsLeft(rt: HazardRuntime): number | null {
+  const c = rt.config;
+  switch (rt.phase) {
+    case 'telegraph':
+      return Math.max(
+        0,
+        Math.max(HAZARD_MIN_TELEGRAPH_SECONDS, c.telegraphSeconds ?? HAZARD_DEFAULT_TELEGRAPH_SECONDS) - rt.phaseTime,
+      );
+    case 'active':
+      return Math.max(0, (c.activeSeconds ?? HAZARD_DEFAULT_ACTIVE_SECONDS) - rt.phaseTime);
+    default:
+      return null;
+  }
+}
+
+/**
+ * The discharge (m³/s) a hazard's release adds right now (#578 A): 0 unless it
+ * is active and authors a `release`. The gates open over `rampSeconds` at the
+ * start of `active` and close over the same at its end, so the routed stage
+ * rises and falls instead of stepping (a step would bore a shock through the
+ * window). A pure function of the runtime, so a replay releases the same water
+ * on the same step.
+ */
+export function hazardReleaseDischarge(rt: HazardRuntime): number {
+  const release = rt.config.release;
+  if (!release || rt.phase !== 'active') return 0;
+  const ramp = Math.max(1e-3, release.rampSeconds ?? HAZARD_DEFAULT_RELEASE_RAMP_SECONDS);
+  const length = rt.config.activeSeconds ?? HAZARD_DEFAULT_ACTIVE_SECONDS;
+  const open = Math.min(1, rt.phaseTime / ramp);
+  const closing = Math.min(1, Math.max(0, (length - rt.phaseTime) / ramp));
+  return release.discharge * Math.min(open, closing);
 }

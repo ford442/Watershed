@@ -13,6 +13,7 @@ import { probeNativeStatus, type NativeStatus } from '../sim/nativeOwner';
 import MovementReadout from './MovementReadout';
 import MenuFocusScope from './MenuFocusScope';
 import { lazyComponent } from '../utils/lazyComponent';
+import { useHazardsUp } from '../hooks/useHazardsUp';
 import { whenIdle } from '../utils/whenIdle';
 import type { BiomeId } from '../configs/biomes';
 import { queryFlags } from '../config/queryFlags';
@@ -48,6 +49,8 @@ const RunResultsChunk = lazyComponent(() => import('./RunResultsPanel'));
 const RunResultsPanel = RunResultsChunk.Component;
 // Captions (#558 C.3) are their own chunk, fetched only once the player turns them on.
 const CaptionLayer = lazyComponent(() => import('./CaptionLayer')).Component;
+// The hazard banner (#578 A) is its own chunk, fetched only while a hazard is up.
+const HazardBanner = lazyComponent(() => import('./HazardBanner')).Component;
 
 /*
  * Per-frame readouts (#465 C4). The store gets speed, distance and score every
@@ -142,6 +145,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   const isJourneyComplete = useGameStore((s) => s.isJourneyComplete);
   const vehicleType = useGameStore((s) => s.vehicleType);
   const captionsOn = useSettingsStore((st) => st.captions && st._hasHydrated);
+  const hazardsUp = useHazardsUp();
   // Sticky per run: turning an assist on mid-run marks the run there and then.
   const assisted = useSyncExternalStore(subscribeAccess, getRunAssistBits, getRunAssistBits) !== 0;
 
@@ -707,6 +711,11 @@ export const GameHUD: React.FC<GameHUDProps> = ({
       {captionsOn && (
         <React.Suspense fallback={null}>
           <CaptionLayer />
+        </React.Suspense>
+      )}
+      {hazardsUp && (
+        <React.Suspense fallback={null}>
+          <HazardBanner />
         </React.Suspense>
       )}
     </>

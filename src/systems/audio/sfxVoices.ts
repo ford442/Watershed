@@ -27,8 +27,9 @@ export interface SfxVoices {
    */
   play(name: string, volume: number, pitch: number, position?: THREE.Vector3): string | null;
   /**
-   * Thunder one-shot — see AudioManager.playThunder. `clap` is only asked for
-   * once the gate is open. Untracked: not a SOUND_DEFS entry, so no category cap.
+   * A synthesized one-shot — the thunder (AudioManager.playThunder) and a
+   * chunk's own (playSynthOneShot: the dam horn). `clap` is only asked for once
+   * the gate is open. Untracked: not a SOUND_DEFS entry, so no category cap.
    */
   playThunder(clap: () => AudioBuffer | null, volume: number, delaySeconds: number, pitch: number): boolean;
   /** Stop a specific sound or all instances of a sound. */

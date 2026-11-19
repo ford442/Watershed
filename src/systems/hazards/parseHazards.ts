@@ -9,6 +9,7 @@
  * HAZARD_MIN_TELEGRAPH_SECONDS, whatever the file says).
  */
 import {
+  HAZARD_DEFAULT_RELEASE_RAMP_SECONDS,
   HAZARD_DEFAULT_ACTIVE_SECONDS,
   HAZARD_DEFAULT_ARM_DISTANCE,
   HAZARD_DEFAULT_RADIUS,
@@ -17,6 +18,7 @@ import {
   isHazardKind,
   type HazardConfig,
   type HazardConsequence,
+  type HazardRelease,
   type HazardTrigger,
 } from './hazardTypes';
 
@@ -50,6 +52,20 @@ function parseConsequence(raw: unknown): HazardConsequence | undefined {
   return out.wetness !== undefined || out.chill !== undefined ? out : undefined;
 }
 
+/** Largest release a map may author (m³/s): the schema's maximum. */
+export const HAZARD_MAX_RELEASE_DISCHARGE = 400;
+
+function parseRelease(raw: unknown): HazardRelease | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const rec = raw as Record<string, unknown>;
+  if (!positive(rec.discharge) || !finite(rec.stage) || rec.stage < 0) return undefined;
+  return {
+    discharge: Math.min(HAZARD_MAX_RELEASE_DISCHARGE, rec.discharge),
+    rampSeconds: positive(rec.rampSeconds) ? rec.rampSeconds : HAZARD_DEFAULT_RELEASE_RAMP_SECONDS,
+    stage: rec.stage,
+  };
+}
+
 /** Valid hazards in authored order; duplicates of an earlier id are dropped. */
 export function parseHazards(raw: unknown): HazardConfig[] {
   if (!Array.isArray(raw)) return [];
@@ -69,6 +85,7 @@ export function parseHazards(raw: unknown): HazardConfig[] {
       ? rec.hours.filter((h): h is number => Number.isInteger(h) && (h as number) >= 0 && (h as number) <= 23)
       : [];
     const consequence = parseConsequence(rec.consequence);
+    const release = parseRelease(rec.release);
     out.push({
       id: rec.id,
       kind: rec.kind,
@@ -88,6 +105,7 @@ export function parseHazards(raw: unknown): HazardConfig[] {
       ),
       activeSeconds: positive(rec.activeSeconds) ? rec.activeSeconds : HAZARD_DEFAULT_ACTIVE_SECONDS,
       ...(consequence ? { consequence } : {}),
+      ...(release ? { release } : {}),
     });
   }
   return out;

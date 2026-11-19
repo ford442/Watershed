@@ -7,6 +7,7 @@
 import { readFileSync } from 'node:fs';
 import { execSync } from 'node:child_process';
 import { captions } from './en/lazy/captions';
+import { hazards } from './en/lazy/hazards';
 import { pauseMenu } from './en/lazy/pauseMenu';
 import { runResults } from './en/lazy/runResults';
 import { settingsPanel } from './en/lazy/settingsPanel';
@@ -14,11 +15,12 @@ import { todaysRiver } from './en/lazy/todaysRiver';
 import { touchControls } from './en/lazy/touchControls';
 import { userRivers } from './en/lazy/userRivers';
 
-const lazy = { captions, pauseMenu, runResults, settingsPanel, todaysRiver, touchControls, userRivers };
+const lazy = { captions, hazards, pauseMenu, runResults, settingsPanel, todaysRiver, touchControls, userRivers };
 
 /** `alsoUnder`: a folder of modules only the owner imports, so they ride in its chunk (#559 C). */
 const OWNER: Record<keyof typeof lazy, { file: string; alsoNames?: string[]; alsoUnder?: string }> = {
   captions: { file: 'src/components/CaptionLayer.tsx' },
+  hazards: { file: 'src/components/HazardBanner.tsx' },
   settingsPanel: {
     file: 'src/ui/SettingsPanel.tsx',
     alsoNames: ['src/systems/settings/settingsDerive.ts'],

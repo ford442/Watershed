@@ -36,9 +36,11 @@ import {
   createRiverRouter,
   routedEdgeInflow,
   type RiverRouter,
+  type RouterRelease,
   type RouterWeather,
   type RoutingForecast,
 } from './riverRouter';
+import { getHazardRelease } from '../hazards/hazardLive';
 import { getRoutingReach, routingChainIndex, type RoutingReach } from '../map/routingReach';
 import { DEFAULT_FORECAST_INPUTS } from '../../constants/forecast';
 import {
@@ -290,6 +292,23 @@ function routerWeatherNow(): RouterWeather {
   const overChainIndex =
     over === null ? null : routingChainIndex(getRoutingReach(), getRunSession()?.mapId ?? ACTIVE_MAP_ID, over);
   return { type: weather.type, intensity: weather.intensity, overChainIndex };
+}
+
+/**
+ * A hazard's release this step (#578 A) — an open dam's gates — on the routed
+ * chain: the discharge joins at the top of the hazard's segment. A fresh value
+ * for the worker message; null when nothing is releasing or the segment is off
+ * the chain (a player river past the campaign's end).
+ */
+function routerReleaseNow(): RouterRelease | null {
+  const release = getHazardRelease();
+  if (!release) return null;
+  const chainIndex = routingChainIndex(
+    getRoutingReach(),
+    getRunSession()?.mapId ?? ACTIVE_MAP_ID,
+    release.segmentIndex,
+  );
+  return chainIndex === null ? null : { discharge: release.discharge, chainIndex };
 }
 
 /** The player's position on the routed chain, or null off it. */
@@ -544,9 +563,12 @@ export function sweHostFrame(
     const due = takeSweStep(state, dt, interval, grid.takeShortfall());
     if (due) {
       const { stepDt, clockDt } = due;
-      // The director's weather for this step, then the advance (the worker does the same).
+      // The director's weather and any hazard's release for this step, then the
+      // advance (the worker does the same).
       const weather = routerWeatherNow();
+      const release = routerReleaseNow();
       router?.setWeather(weather);
+      router?.setRelease(release);
       router?.advance(clockDt);
       const run = getRunSession()?.runId ?? null;
       if (state.simRun !== run) {
@@ -612,8 +634,14 @@ export function sweHostFrame(
         edgeEta: routed?.edgeEta,
       };
       // The worker's router advances by the same new time the clocks did.
-      if (remote) remote.stepRouted(stepInput, clockDt === stepDt ? { chainIndex, weather } : { chainIndex, weather, advance: clockDt });
-      else {
+      if (remote) {
+        remote.stepRouted(stepInput, {
+          chainIndex,
+          weather,
+          ...(release ? { release } : {}),
+          ...(clockDt === stepDt ? {} : { advance: clockDt }),
+        });
+      } else {
         // On this thread (wasm-main / wgsl): its own span; a worker's is the sim worker's STEP (#559 D).
         const traced = traceStart();
         grid.step(stepInput);

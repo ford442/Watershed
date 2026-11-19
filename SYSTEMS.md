@@ -621,6 +621,13 @@ the survival layer read it directly, so a headless run has one source of truth, 
 holds a plain view and the silent sink, and tests that stage the store build theirs with
 `testing/storeSimCore.ts`).
 
+**Registration:** `SimCoreTick` registers the systems once per mount and again only when a debug
+stage is toggled — its effect is keyed on `isStageEnabled` / `setStageFailure`, the two functions
+the systems read (`SimDebugStages`), never on the whole controller, which `useDebugStages` rebuilds
+on every stage loading / success report. Keyed on the controller it re-registered every system
+about once a second, and a system with state of its own (the hazards' lifecycles, #578 A) went back
+to dormant each time (`SimCoreTick.test.tsx`).
+
 **Systems (order bands):** 10 `weather-director` · 20 `sky-clock` · 30 `chunk-biome` (ChunkManager's
 biome detection and its 0.4 s sim-time debounce, which also commits the segment's `GameplayProfile`)
 · 35 `gameplay-profile` (publishes the active profile) · 40 `survival` (`stepRunSurvival`) · 45 `hazards`
@@ -738,11 +745,44 @@ phase and hit on the ghost clock, like a split). The log rides in the `.wsghost`
 codec v5; the sample payload is unchanged, its header still says layout 4) and the replay smoke
 compares it across replays.
 
+**Releases (#578 A):** a hazard with a `release` (the hydro dam's 14:00 `damRelease`) sends water
+while active. `hazardReleaseDischarge` (pure, in `hazardLifecycle.ts`) ramps its `discharge` open
+over `rampSeconds`, holds, and ramps it shut; the runtime publishes it on `hazardLive.ts`, and
+sweHost hands it to the river router each SWE step next to the weather (`RiverRouter.setRelease`;
+on `wasm-worker` it rides the STEP's `SimRoute.release`, and `workerSweSim.stepRouted` now forwards
+the weather too — it used to drop it, so the worker's router never heard the director;
+`simWorker.integration.test.ts` runs both through the parity loop). It joins the chain's ABI-14 lateral plane
+at the top of the hazard's reach, so the window's upstream edge, the water mesh and the hull all
+read the one routed stage — no scripted wave, and the reaches above never hear it. One release at a
+time (the first active); `registry.contract.test.ts` keeps a map from overlapping two. An active
+release reaches the player only once the stage under them is up (`reachable`, ≥ half its `stage`;
+no field: radius only). WGSL boots have no router, so there the release is telegraphed but carries
+no water.
+
+**Telegraph (#578 A.2):** `hazardLive.ts` (entry-side, store-free) also holds every armed /
+telegraphing / active hazard with its sim-clock countdown. While any is up, the page mounts two
+lazy chunks: `components/Hazards/HazardTelegraph.tsx` (a wall band at the predicted waterline and
+a water-edge decal at the predicted surface, from the segment's hull floor —
+`telegraphGeometry.ts` — in the `telegraphArmed/Warn/Active` palette keys; the dam horn,
+`hornBuffer.ts` through `AudioManager.playSynthOneShot`, captioned; a `warn` rumble) and `components/HazardBanner.tsx` (glyph +
+word + countdown, `--a11y-telegraph-*`). The caption layer captions the phases as before.
+
+**Fairness:** the hazards live at the launch hour fold into the ghost's hydro hash
+(`hazardFairness.ts` via raceFairness `currentRunFairness`); '' when none is, so other maps and
+hours hash as before.
+
+**Proof:** `damRelease.campaign.test.ts` runs the hydro release headless: the plain centreline
+pilot is reached once the surge arrives, `pilots/cautious.ts` (holds short while it telegraphs
+or is active) is not and carries on, 06:00 stays dormant, two runs log and checksum alike.
+
 **Boundaries (Do NOT):**
 - Do NOT step a hazard from a `useFrame`, a timer or a component: it is sim state.
 - Do NOT reset the player from a hazard; consequences go through the survival layer.
 - Do NOT author a telegraph under 1.5 s, or a `hydroEventId` that is not in the map's
   `hydroEvents[]` (`registry.contract.test.ts` checks both, plus the segment exists).
+- Do NOT inject a release as an authored disk or a scripted wave: it goes through the router, so
+  the mesh, the hull and the band agree. Do NOT author a `release.stage` the router does not
+  produce (`hydroContrast.release.test.ts`).
 
 ---
 
@@ -1096,9 +1136,13 @@ inside the window integrates `dE/dt = 0.005·max(0, q − 0.12) − deposit(q)` 
 (`terrain/erosion.ts`; still water does nothing, slowed water drops what it carries). The floor
 every consumer reads is `h − E` clamped to ±0.4 m: the trimesh and the bed take it at their own
 vertices, the visual floor interpolates it over the hull's own triangles — the three agree to
-1e-4 at every hull vertex (`erosion.test.ts`). A segment re-meshes (floor, trimesh remount,
+1e-4 at every hull vertex (`erosion.test.ts`). A segment re-meshes (floor, trimesh swap,
 bathymetry re-register) when its plane has moved 1 cm since its last mesh, at most every 3 s
-of solver time — so a replay refreshes on the same step. The plane outlives the mount: it is
+of solver time — so a replay refreshes on the same step. The floor collider is an explicit
+`TrimeshCollider` keyed on the geometry inside a body that stays (`TrackSegmentCollisionMeshes`),
+so the old floor's removal and the new one's creation land in one commit; the auto collider it
+replaced was built a render after its body remounted, and a body standing on a refreshing floor
+(the hydro basin under a dam release's surge, #578 A) fell through the gap. The plane outlives the mount: it is
 saved per `mapId:segmentIndex` (`PersistenceSystem` `erosion`, quantized and run-length
 coded, ≤ 200 kB, oldest first out) and the next mount — later today or tomorrow's river —
 starts from it. Scripted / replay runs neither load nor save it. After a storm, meander's

@@ -218,9 +218,15 @@ export function createWorkerSweSim(
         gridId,
         surface: takeSurface(),
         input: { ...rest, events: input.events.slice() },
-        route: route.advance === undefined
-          ? { chainIndex: route.chainIndex }
-          : { chainIndex: route.chainIndex, advance: route.advance },
+        // Everything the worker's router needs this step: the director's weather
+        // and any hazard release are set on it before it advances, exactly as
+        // the main-thread router is (#578 A — the weather used to be dropped here).
+        route: {
+          chainIndex: route.chainIndex,
+          ...(route.weather !== undefined ? { weather: route.weather } : {}),
+          ...(route.release ? { release: route.release } : {}),
+          ...(route.advance !== undefined ? { advance: route.advance } : {}),
+        },
       });
     },
     dispose() {

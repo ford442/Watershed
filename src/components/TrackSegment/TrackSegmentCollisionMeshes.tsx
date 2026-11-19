@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect } from 'react';
-import { RigidBody, CuboidCollider } from '@react-three/rapier';
+import React, { useCallback, useEffect, useMemo } from 'react';
+import { RigidBody, CuboidCollider, TrimeshCollider } from '@react-three/rapier';
 import type { BufferGeometry } from 'three';
 import {
   resolveSegmentFriction,
@@ -55,6 +55,10 @@ export function TrackSegmentCollisionMeshes({
     slipperiness,
   );
 
+  // The floor's triangles, as `colliders="trimesh"` would build them (one copy;
+  // the worker gets its own below, since its buffers are transferred away).
+  const floor = useMemo(() => trimeshSpecFromGeometry(collisionGeometry), [collisionGeometry]);
+
   // The same canyon, mirrored into the raft's Rapier worker (#465 C2).
   const buildWorkerTrimesh = useCallback(
     () => trimeshSpecFromGeometry(collisionGeometry, { friction, restitution }),
@@ -70,20 +74,24 @@ export function TrackSegmentCollisionMeshes({
   return (
     <>
       {!openFloor && (
-        <RigidBody
-          // A new hull (an eroded floor, #487 E) is a new trimesh: the auto
-          // collider is built at mount, so the body remounts with its geometry.
-          key={`rb-collision-${segmentId}-${collisionGeometry.uuid}`}
-          type="fixed"
-          colliders="trimesh"
-          // The collision mesh is invisible on purpose; without this,
-          // @react-three/rapier's auto-collider pass (traverseVisible) skips
-          // it and the canyon has no floor.
-          includeInvisible
-          friction={friction}
-          restitution={restitution}
-        >
-          <mesh geometry={collisionGeometry} visible={false} />
+        <RigidBody key={`rb-collision-${segmentId}`} type="fixed" colliders={false}>
+          {/*
+           * A new hull (an eroded floor, #487 E) is a new trimesh. It is an
+           * explicit collider keyed on the geometry, in a body that stays: the
+           * old floor's removal and the new one's creation land in the same
+           * commit. With `colliders="trimesh"` the body remounted and its auto
+           * collider was only built a render later, so for a commit the segment
+           * had no floor — up to a whole stepScripted batch, a frame or two in
+           * real time — and a body standing on it fell through when the
+           * floor came back above it (#578 A: a dam release's surge erodes the
+           * basin under the player).
+           */}
+          <TrimeshCollider
+            key={collisionGeometry.uuid}
+            args={[floor.vertices, floor.indices]}
+            friction={friction}
+            restitution={restitution}
+          />
         </RigidBody>
       )}
 

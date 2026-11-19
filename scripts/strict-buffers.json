@@ -18,6 +18,7 @@
   "src/sim/headless/createHeadlessRun.ts",
   "src/sim/headless/headlessWater.ts",
   "src/sim/headless/nativeNode.ts",
+  "src/sim/headless/pilots/cautious.ts",
   "src/sim/headless/pilots/centreline.ts",
   "src/sim/headless/pilots/ghost.ts",
   "src/sim/headless/pilots/pilot.ts",

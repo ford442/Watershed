@@ -17,8 +17,8 @@ import { GamepadSource } from './sources/GamepadSource';
 describe('haptic envelope table', () => {
   const kinds = Object.keys(HAPTIC_ENVELOPES) as HapticKind[];
 
-  it('has exactly the three authored envelopes', () => {
-    expect(kinds.sort()).toEqual(['flow', 'impact', 'wipeout']);
+  it('has exactly the four authored envelopes', () => {
+    expect(kinds.sort()).toEqual(['flow', 'impact', 'warn', 'wipeout']);
   });
 
   it('keeps every step inside the actuator range and in time order', () => {
@@ -53,8 +53,17 @@ describe('haptic envelope table', () => {
     expect(envelopeDurationMs('wipeout')).toBeGreaterThan(envelopeDurationMs('flow'));
   });
 
-  it('orders priority wipeout > impact > flow', () => {
-    expect(HAPTIC_PRIORITY.wipeout).toBeGreaterThan(HAPTIC_PRIORITY.impact);
+  it('warn (a hazard telegraph, #578 A) is two even beats, felt but softer than a hit', () => {
+    const [a, b] = HAPTIC_ENVELOPES.warn;
+    expect(HAPTIC_ENVELOPES.warn).toHaveLength(2);
+    expect(b.atMs).toBeGreaterThan(a.atMs + a.durationMs);
+    expect(b.weak).toBe(a.weak);
+    expect(Math.max(a.weak, a.strong)).toBeLessThan(HAPTIC_ENVELOPES.impact[0].strong);
+  });
+
+  it('orders priority wipeout > warn > impact > flow', () => {
+    expect(HAPTIC_PRIORITY.wipeout).toBeGreaterThan(HAPTIC_PRIORITY.warn);
+    expect(HAPTIC_PRIORITY.warn).toBeGreaterThan(HAPTIC_PRIORITY.impact);
     expect(HAPTIC_PRIORITY.impact).toBeGreaterThan(HAPTIC_PRIORITY.flow);
   });
 

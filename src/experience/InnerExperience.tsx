@@ -34,6 +34,7 @@ import type { InnerExperienceProps } from './types';
 import { InputHubTick } from '../input/InputHubTick';
 import { isTouchInputMode } from '../input/touchMode';
 import { isScriptedRunLive } from '../input/scriptedRun';
+import { useHazardsUp } from '../hooks/useHazardsUp';
 
 // #485 C: step-time instrumentation for the DebugPanel and `pnpm profile:physics`
 // (which runs with ?cleanTest=1, never ?debug=1) — not part of play, so not in the entry.
@@ -48,6 +49,8 @@ const LevelLoader = lazy(() => import('./LevelLoader'));
 const ReachManager = lazy(() => import('./ReachManager'));
 // The centreline guide assist (#558 D.1): its own chunk, fetched only when on.
 const GuideRibbon = lazy(() => import('../components/GuideRibbon'));
+// A hazard's in-world telegraph (#578 A): its own chunk, fetched only while a hazard is up.
+const HazardTelegraph = lazy(() => import('../components/Hazards/HazardTelegraph'));
 
 /**
  * InnerExperience — game scene composition (providers are mounted in Experience.tsx).
@@ -74,6 +77,7 @@ export default function InnerExperience({
   });
   const { config: lodConfig, quality: lodQuality } = useLOD();
   const guideRibbon = useSettingsStore((s) => s.guideRibbon && s._hasHydrated);
+  const hazardsUp = useHazardsUp();
 
   // The day's conditions are fixed at launch with the hour; the director steps the weather script.
   const conditions = getActiveConditions();
@@ -147,6 +151,11 @@ export default function InnerExperience({
           {guideRibbon && (
             <Suspense fallback={null}>
               <GuideRibbon />
+            </Suspense>
+          )}
+          {hazardsUp && (
+            <Suspense fallback={null}>
+              <HazardTelegraph />
             </Suspense>
           )}
 

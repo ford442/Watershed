@@ -346,6 +346,7 @@ export function createSimWorkerCore(
           const routed = routedAt(command.route);
           if (command.route) {
             if (command.route.weather !== undefined) routing.router?.setWeather(command.route.weather);
+            routing.router?.setRelease(command.route.release ?? null);
             routing.router?.advance(command.route.advance ?? command.input.dt);
           }
           applySurface(grid, command.surface);

@@ -15,6 +15,7 @@ import { getActiveMapId, getActiveRunKey } from '../../utils/runContext';
 import { getActiveConditions, getActiveLaunchHour, runConditionsFairnessKey } from '../journey/runSession';
 import { getQualityPresetNow } from '../GameState';
 import { parseHydroEvents, type HydroEvent } from '../water/hydroEvents';
+import { hazardsFairnessPart } from '../hazards/hazardFairness';
 import { getActiveUserRiver, userRiverFairnessPart } from '../map/userRiverSession';
 import { getRivalGhost, getRunBest } from '../persistence/PersistenceSystem';
 import { getRunAssistBits } from '../settings/accessRuntime';
@@ -37,22 +38,41 @@ export function hydroEventsForMap(mapId: MapRegistryId): HydroEvent[] {
   }
 }
 
+/** The raw `hazards[]` the run on `mapId` carries (a player's river carries its own). */
+function hazardsForMap(mapId: MapRegistryId): unknown {
+  try {
+    const river = getActiveUserRiver();
+    return (river ? river.level : getMapDefinition(mapId)?.levelData)?.hazards;
+  } catch {
+    return undefined;
+  }
+}
+
 /** Fairness triple for the run being played right now. */
 export function currentRunFairness(mapId: MapRegistryId = getActiveMapId()): GhostHydroFairness {
+  const launchHour = getActiveLaunchHour();
+  const events = hydroEventsForMap(mapId);
+  const key = withPart(
+    withPart(runConditionsFairnessKey(getActiveConditions()), userRiverFairnessPart()),
+    // The hazards live at this hour change the river (#578 A); '' when none is.
+    hazardsFairnessPart(hazardsForMap(mapId), events, launchHour),
+  );
   return buildGhostHydroFairness({
-    launchHour: getActiveLaunchHour(),
-    events: hydroEventsForMap(mapId),
+    launchHour,
+    events,
     qualityPreset: getQualityPresetNow(),
-    conditionsKey: withRiverPart(runConditionsFairnessKey(getActiveConditions())),
+    conditionsKey: key,
     assists: getRunAssistBits(),
   });
 }
 
-/** A player river's ghosts carry its level hash: another river never races this one. */
-function withRiverPart(conditionsKey: string): string {
-  const river = userRiverFairnessPart();
-  if (!river) return conditionsKey;
-  return conditionsKey ? `${conditionsKey}|${river}` : river;
+/**
+ * Append one part of the river's identity to the conditions key: a player
+ * river's level hash (another river never races this one), the live hazards.
+ */
+function withPart(conditionsKey: string, part: string | null | undefined): string {
+  if (!part) return conditionsKey;
+  return conditionsKey ? `${conditionsKey}|${part}` : part;
 }
 
 export interface JudgedRival {

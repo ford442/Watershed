@@ -106,3 +106,44 @@ describe('level schema: hazards[] (#522 A)', () => {
     expect(parseHazards([missing])).toEqual([]); // so registry.contract.test.ts fails a map that ships one
   });
 });
+
+describe('parseHazards — release (#578 A)', () => {
+  const DAM = { id: 'd', kind: 'damRelease', segmentIndex: 4, trigger: { type: 'proximity', distance: 50 } };
+
+  it('keeps a release with its discharge and stage, defaulting the ramp', () => {
+    const [h] = parseHazards([{ ...DAM, release: { discharge: 60, stage: 1 } }]);
+    expect(h.release).toEqual({ discharge: 60, rampSeconds: 2, stage: 1 });
+  });
+
+  it('drops a release without a positive discharge or a stage, keeping the hazard', () => {
+    for (const release of [{ discharge: 0, stage: 1 }, { stage: 1 }, { discharge: 60 }, { discharge: 60, stage: -1 }, 'lots']) {
+      const parsed = parseHazards([{ ...DAM, release }]);
+      expect(parsed).toHaveLength(1);
+      expect(parsed[0].release).toBeUndefined();
+    }
+  });
+
+  it('clamps the discharge to the schema maximum', () => {
+    expect(parseHazards([{ ...DAM, release: { discharge: 9000, stage: 1 } }])[0].release?.discharge).toBe(400);
+  });
+});
+
+describe('level schema: hazards[].release (#578 A)', () => {
+  const base = MAP_REGISTRY.lumber.levelData;
+  const errorsFor = (hazards: unknown[]) =>
+    validateLevel({ ...base, hazards }).errors.filter((e) => e.field.startsWith('hazards'));
+  const DAM = { id: 'd', kind: 'damRelease', segmentIndex: 4, trigger: { type: 'proximity', distance: 50 } };
+
+  it('accepts a release and rejects one out of range or with an unknown field', () => {
+    expect(errorsFor([{ ...DAM, release: { discharge: 60, rampSeconds: 2, stage: 1 } }])).toEqual([]);
+    expect(errorsFor([{ ...DAM, release: { discharge: 900, stage: 1 } }]).length).toBeGreaterThan(0);
+    expect(errorsFor([{ ...DAM, release: { discharge: 60, stage: 3 } }]).length).toBeGreaterThan(0);
+    expect(errorsFor([{ ...DAM, release: { discharge: 60, stage: 1, colour: 'red' } }]).length).toBeGreaterThan(0);
+  });
+
+  it('leaves a release missing its discharge or stage to the parser (keeps the validator small)', () => {
+    const missing = { ...DAM, release: { discharge: 60 } };
+    expect(errorsFor([missing])).toEqual([]);
+    expect(parseHazards([missing])[0]?.release).toBeUndefined(); // so registry.contract.test.ts fails a map that ships one
+  });
+});
