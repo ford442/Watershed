@@ -205,7 +205,7 @@ function refreshBed(
     grid.width,
     grid.height,
   );
-  grid.commitBed();
+  const repaired = grid.commitBed();
 
   state.valid = true;
   state.revision = revision;
@@ -220,6 +220,7 @@ function refreshBed(
     originX,
     originZ,
     coveredCells: covered,
+    repairedCells: repaired,
     sourceCount: getRegisteredBathymetryCount(),
   });
 }

@@ -1,17 +1,21 @@
 /**
  * bindings.cpp — the ONLY export surface of the Watershed WASM module.
  *
- * This is the ABI: anything reachable from TypeScript is listed here, as a
- * plain `extern "C"` function named `ws_<name>` (JS sees `Module._ws_<name>`),
- * and src/systems/water/wasmAbi.ts declares the matching table. Adding,
- * removing, or changing a signature (or a batch stride) means bumping
- * ws_getVersion() below, updating the wasmAbi.ts table and WASM.md.
+ * The exports themselves are declared once, in abi.def (#575), and generated
+ * into abi_generated.h by scripts/gen-abi.mjs: one `extern "C" ws_<name>`
+ * wrapper per export (JS sees `Module._ws_<name>`) that forwards, argument by
+ * argument and by name, to the host-clean implementation in its header.
+ * `gen-abi --check` (pnpm typecheck and every CMake build) fails when a
+ * header's prototype stops matching abi.def — same types, same names, same
+ * order — so nothing here can take its parameters in a different order from
+ * the TS table. To add or change an export: edit abi.def, run pnpm gen:abi,
+ * bump WS_ABI_VERSION there and add a line below and in WASM.md.
  *
  * Plain C ABI since 12 (#467): no Embind, so no RTTI in this TU, no
  * `new Function` invokers in the glue, and no glue/wasm coupling beyond the
  * import/export names. Only scalars and heap byte offsets cross the boundary.
- * The one struct result (RoutedEdge; WaterForceResult and Vec3 too until ABI
- * 15) is written through an out-pointer into a caller-reserved scratch block.
+ * The one struct result (RoutedEdge) is written through an out-pointer into a
+ * caller-reserved scratch block; abi_generated.h static_asserts its layout.
  *
  * This is the only translation unit that includes <emscripten/emscripten.h> —
  * every other header (common.h, forces.h, swe.h, chores.h, particles.h,
@@ -36,6 +40,7 @@
 #else
 #define EMSCRIPTEN_KEEPALIVE __attribute__((used))
 #endif
+#include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <type_traits>
@@ -87,13 +92,18 @@
 //       routeReachTravelTime, the five chores, stepSplashParticles.
 //       New: packSurfaceField (the SWE flow texture's bytes, chores.cpp).
 //       The loader now requires version == WASM_ABI_VERSION exactly: there
-//       is no floor any more (wasmLoader.ts, wasmAbiVersion.drift.test.ts).
+//       is no floor any more (wasmLoader.ts).
+//  18 — BREAKING (#575): finite or refused, one ABI source.
+//       The export surface is declared once, in abi.def; these wrappers, the
+//       constants, the TS interface (branded parameters), the WASM_ABI table
+//       and the WASM.md table are generated from it (scripts/gen-abi.mjs),
+//       and gen-abi --check holds the implementation headers to it.
+//       computeWaterForcesBatch takes a refused-row plane (3rd argument) and
+//       returns WS_PARTIAL when a non-finite row was zeroed. applySWEEvent
+//       returns WS_BAD_ARG for a radius / strength / dt past SWE_EVENT_MAX_*.
+//       initWaterfallParticles / stepWaterfallParticles return a status and
+//       write the seed through a trailing out-pointer.
 // ---------------------------------------------------------------------------
-static constexpr int WATERSHED_ABI_VERSION = 17;
-
-// Out-pointer layout. Mirrored by the reader in wasmAbi.ts.
-static_assert(std::is_standard_layout_v<RoutedEdge> && sizeof(RoutedEdge) == 2 * sizeof(float),
-              "RoutedEdge is written as 2 packed floats");
 
 namespace {
 
@@ -113,152 +123,18 @@ inline void writeOut(uintptr_t outPtr, const T& value) noexcept {
 
 #define WS_EXPORT extern "C" EMSCRIPTEN_KEEPALIVE
 
-WS_EXPORT int ws_getVersion() noexcept {
-    return WATERSHED_ABI_VERSION;
-}
-
-// ---- Water forces ---------------------------------------------------------
-
-WS_EXPORT int ws_computeWaterForcesBatch(uintptr_t inputPtr, uintptr_t outputPtr, int sampleCount,
-                                         float flowSpeed, float waterLevel,
-                                         float raftMass, float raftVolume,
-                                         float dragCoefficient, float frontalArea, float sideArea,
-                                         float timeSeconds,
-                                         float turbulenceStrength, float turbulenceFrequency) noexcept {
-    return computeWaterForcesBatch(inputPtr, outputPtr, sampleCount, flowSpeed, waterLevel,
-                                   raftMass, raftVolume, dragCoefficient, frontalArea, sideArea,
-                                   timeSeconds, turbulenceStrength, turbulenceFrequency);
-}
-
-// ---- Shallow water --------------------------------------------------------
-
-WS_EXPORT float ws_stepShallowWater(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t bPtr,
-                                    int width, int height,
-                                    float dt, float g, float dx, float H) noexcept {
-    return stepShallowWater(hPtr, uPtr, wPtr, bPtr, width, height, dt, g, dx, H);
-}
-
-WS_EXPORT float ws_stepShallowWaterInflow(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t bPtr,
-                                          int width, int height,
-                                          float dt, float g, float dx, float H, float edgeEta) noexcept {
-    return stepShallowWaterInflow(hPtr, uPtr, wPtr, bPtr, width, height, dt, g, dx, H, edgeEta);
-}
-
-WS_EXPORT int ws_applySWEEvent(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t bPtr,
-                               int width, int height, float dx, float originX, float originZ, float H,
-                               int kind, float cx, float cz, float radius, float strength, float dt) noexcept {
-    return applySWEEvent(hPtr, uPtr, wPtr, bPtr, width, height, dx, originX, originZ, H,
-                         kind, cx, cz, radius, strength, dt);
-}
-
-WS_EXPORT int ws_scrollShallowWater(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t bPtr,
-                                    int width, int height, int shiftX, int shiftZ,
-                                    float inflowEta, float inflowU, float inflowW) noexcept {
-    return scrollShallowWater(hPtr, uPtr, wPtr, bPtr, width, height, shiftX, shiftZ,
-                              inflowEta, inflowU, inflowW);
-}
-
-WS_EXPORT void ws_reserveShallowWaterScratch(int width, int height) noexcept {
-    reserveShallowWaterScratch(width, height);
-}
-
-WS_EXPORT uintptr_t ws_allocateGrid(int count) noexcept {
-    return allocateGrid(count);
-}
-
-WS_EXPORT void ws_freeGrid(uintptr_t ptr) noexcept {
-    freeGrid(ptr);
-}
-
-// ---- Channel routing ------------------------------------------------------
-
-WS_EXPORT int ws_routeReach(uintptr_t lengthsPtr, uintptr_t slopesPtr, uintptr_t widthsPtr, int nSeg,
-                            float inflowQ, float dt, uintptr_t storagePtr, uintptr_t outflowPtr) noexcept {
-    return routeReach(lengthsPtr, slopesPtr, widthsPtr, nSeg, inflowQ, dt, storagePtr, outflowPtr);
-}
-
-WS_EXPORT int ws_routeReachLateral(uintptr_t lengthsPtr, uintptr_t slopesPtr, uintptr_t widthsPtr, int nSeg,
-                                   float inflowQ, uintptr_t lateralPtr, float dt, uintptr_t storagePtr,
-                                   uintptr_t outflowPtr) noexcept {
-    return routeReachLateral(lengthsPtr, slopesPtr, widthsPtr, nSeg, inflowQ, lateralPtr, dt, storagePtr, outflowPtr);
-}
-
-WS_EXPORT int ws_routeReachSteady(uintptr_t lengthsPtr, uintptr_t slopesPtr, uintptr_t widthsPtr, int nSeg,
-                                  float Q, uintptr_t storagePtr, uintptr_t outflowPtr) noexcept {
-    return routeReachSteady(lengthsPtr, slopesPtr, widthsPtr, nSeg, Q, storagePtr, outflowPtr);
-}
-
-WS_EXPORT int ws_routeReachTravelTime(uintptr_t lengthsPtr, uintptr_t slopesPtr, uintptr_t widthsPtr, int nSeg,
-                                      float Q, uintptr_t lagPtr) noexcept {
-    return routeReachTravelTime(lengthsPtr, slopesPtr, widthsPtr, nSeg, Q, lagPtr);
-}
-
-/** Writes RoutedEdge (eta, speed) to `outPtr`. */
-WS_EXPORT void ws_routedEdgeState(float Q, float Qref, float H, float g, uintptr_t outPtr) noexcept {
-    writeOut(outPtr, routedEdgeState(Q, Qref, H, g));
-}
-
-// ---- gpu-chores -----------------------------------------------------------
-
-WS_EXPORT int ws_reduceF32Grid(uintptr_t src, int count, uintptr_t out3) noexcept {
-    return reduceF32Grid(src, count, out3);
-}
-
-WS_EXPORT int ws_histogramF32(uintptr_t src, int count, float rangeMin, float rangeMax, uintptr_t binsPtr) noexcept {
-    return histogramF32(src, count, rangeMin, rangeMax, binsPtr);
-}
-
-WS_EXPORT int ws_lumaHistogramU8(uintptr_t rgba, int pixelCount, uintptr_t binsPtr) noexcept {
-    return lumaHistogramU8(rgba, pixelCount, binsPtr);
-}
-
-WS_EXPORT int ws_downsampleF32(uintptr_t src, int srcW, int srcH, uintptr_t dst, int dstW, int dstH) noexcept {
-    return downsampleF32(src, srcW, srcH, dst, dstW, dstH);
-}
-
-WS_EXPORT int ws_blurSeparableF32(uintptr_t src, uintptr_t dst, int width, int height) noexcept {
-    return blurSeparableF32(src, dst, width, height);
-}
-
-WS_EXPORT int ws_packSurfaceField(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t bPtr,
-                                  int width, int height, float H, float dx, uintptr_t outRgba) noexcept {
-    return packSurfaceField(hPtr, uPtr, wPtr, bPtr, width, height, H, dx, outRgba);
-}
-
-// ---- Particle SoA ---------------------------------------------------------
-
-WS_EXPORT uintptr_t ws_allocateParticleSoA(int capacity) noexcept {
-    return allocateParticleSoA(capacity);
-}
-
-WS_EXPORT void ws_freeParticleSoA(uintptr_t ptr) noexcept {
-    freeParticleSoA(ptr);
-}
-
-WS_EXPORT uint32_t ws_initWaterfallParticles(uintptr_t base, int capacity, int active,
-                                             float width, float height, float depthZ,
-                                             float fanSpreadRad, uint32_t seed) noexcept {
-    return initWaterfallParticles(base, capacity, active, width, height, depthZ, fanSpreadRad, seed);
-}
-
-WS_EXPORT uint32_t ws_stepWaterfallParticles(uintptr_t base, int capacity, int active,
-                                             float dt, float width, float height, float depthZ,
-                                             uint32_t seed) noexcept {
-    return stepWaterfallParticles(base, capacity, active, dt, width, height, depthZ, seed);
-}
-
-WS_EXPORT int ws_stepSplashParticles(uintptr_t base, int capacity, int count,
-                                     float dt, float gravityY, float damp) noexcept {
-    return stepSplashParticles(base, capacity, count, dt, gravityY, damp);
-}
+// The generated exports (abi.def → abi_generated.h).
+#define WATERSHED_ABI_EXPORTS
+#include "abi_generated.h"
 
 // ---- Debug-only ------------------------------------------------------------
 
 #ifdef WATERSHED_TRAP_TEST
 /**
  * Debug builds only (CMake WATERSHED_TRAP_TEST, never the shipped pair, so not
- * in the WASM_ABI table or the version): traps on purpose, so ?wasmTrapTest=1
- * can prove a RuntimeError is mapped to a function name (wasmTrap.ts, #502).
+ * in abi.def, the WASM_ABI table or the version): traps on purpose, so
+ * ?wasmTrapTest=1 can prove a RuntimeError is mapped to a function name
+ * (wasmTrap.ts, #502).
  */
 WS_EXPORT void ws_trapTest() noexcept {
     __builtin_trap();

@@ -9,12 +9,13 @@
  */
 import { describe, expect, it, vi } from 'vitest';
 import { WATER_FORCE_INPUT_STRIDE, WATER_FORCE_OUTPUT_STRIDE, WasmHeapExhaustedError, type NativeWaterForceConfig, type WatershedNativeModule } from '../systems/water/wasmAbi';
-import { calculateWaterForceFallback } from '../systems/water/waterForceFallback';
+import { calculateWaterForceFallback, waterForceRefusedFallback } from '../systems/water/waterForceFallback';
 import { sampleSWEFlow, SWE_STAGE_SPEED_BOOST, stagedWaterLevel, type SWEFlowGrid } from '../systems/water/sampleSWEFlow';
 import {
   FORCE_RESULT_STRIDE,
   FORCE_SAMPLE_STRIDE,
   computeSimForces,
+  isForceRefused,
   createSimForceBatch,
   readForceFlow,
   readForceResult,
@@ -34,12 +35,13 @@ function stubModule() {
     }),
     freeGrid: vi.fn(),
     computeWaterForcesBatch: vi.fn(
-      (inPtr: number, outPtr: number, n: number, ...c: number[]) => {
+      (inPtr: number, outPtr: number, refusedPtr: number, n: number, ...c: number[]) => {
         const heap = mod.HEAPF32;
         const config: NativeWaterForceConfig = {
           flowSpeed: c[0], waterLevel: c[1], raftMass: c[2], raftVolume: c[3], dragCoefficient: c[4],
           frontalArea: c[5], sideArea: c[6], timeSeconds: c[7], turbulenceStrength: c[8], turbulenceFrequency: c[9],
         };
+        let anyRefused = false;
         for (let i = 0; i < n; i += 1) {
           const s = (inPtr >> 2) + i * WATER_FORCE_INPUT_STRIDE;
           const r = calculateWaterForceFallback(
@@ -52,8 +54,16 @@ function stubModule() {
           );
           const o = (outPtr >> 2) + i * WATER_FORCE_OUTPUT_STRIDE;
           heap.set([r.forceX, r.forceY, r.forceZ, r.buoyancy, r.drag, r.flow, r.turbulence, r.submergedRatio], o);
+          const sample = {
+            position: { x: heap[s], y: heap[s + 1], z: heap[s + 2] },
+            velocity: { x: heap[s + 3], y: heap[s + 4], z: heap[s + 5] },
+            flowDirection: { x: heap[s + 6], z: heap[s + 7] },
+          };
+          const refused = waterForceRefusedFallback(sample, config);
+          if (refusedPtr) heap[(refusedPtr >> 2) + i] = refused ? 1 : 0;
+          anyRefused ||= refused;
         }
-        return 1;
+        return anyRefused ? 2 : 1; // WS_PARTIAL : WS_OK
       },
     ),
   };
@@ -146,7 +156,7 @@ describe('computeSimForces', () => {
     const stats = computeSimForces(wasm, batch, null, samples, BODIES.length, out);
     expect(stats.calls).toBe(2);
     expect(wasm.computeWaterForcesBatch).toHaveBeenCalledTimes(2);
-    expect(wasm.computeWaterForcesBatch.mock.calls[1][2]).toBe(2);
+    expect(wasm.computeWaterForcesBatch.mock.calls[1][3]).toBe(2);
     expect(readForceFlow(out, 2).source).toBe('fallback');
   });
 
@@ -165,7 +175,28 @@ describe('computeSimForces', () => {
     expect(live[4 * WATER_FORCE_INPUT_STRIDE + 7]).toBe(-1);
     expect(readForceResult(out, 4).submergedRatio).toBeGreaterThan(0);
     batch.dispose();
-    expect(wasm.freeGrid).toHaveBeenCalledTimes(4); // two reallocations' worth
+    expect(wasm.freeGrid).toHaveBeenCalledTimes(6); // two allocations of three blocks (input, output, refused)
+  });
+});
+
+describe('computeSimForces refused rows (ABI 18)', () => {
+  it('flags a non-finite body FORCE_FLAG_REFUSED with zero forces, and leaves its neighbours alone', () => {
+    const wasm = stubModule();
+    const batch = createSimForceBatch(wasm, 4);
+    const samples = new Float64Array(3 * FORCE_SAMPLE_STRIDE);
+    const body = { position: { x: 0, y: 0.2, z: -10 }, velocity: { x: 0.2, y: 0, z: -1.4 } };
+    writeForceSample(samples, 0, body, config(), 4.5, 1);
+    writeForceSample(samples, 1, { ...body, position: { ...body.position, y: Number.NaN } }, config(), 4.5, 1);
+    writeForceSample(samples, 2, body, config(), 4.5, 1);
+    const out = new Float64Array(3 * FORCE_RESULT_STRIDE);
+    computeSimForces(wasm, batch, null, samples, 3, out);
+    expect([0, 1, 2].map((i) => isForceRefused(out, i))).toEqual([false, true, false]);
+    expect(readForceResult(out, 1)).toEqual({
+      forceX: 0, forceY: 0, forceZ: 0, buoyancy: 0, drag: 0, flow: 0, turbulence: 0, submergedRatio: 0,
+    });
+    expect(readForceResult(out, 0)).toEqual(readForceResult(out, 2));
+    expect(readForceResult(out, 0).forceY).toBeGreaterThan(0);
+    batch.dispose();
   });
 });
 
@@ -173,7 +204,7 @@ describe('createSimForceBatch heap failures', () => {
   it('a failed grow leaves no freed pointer behind to be freed again', () => {
     const wasm = stubModule();
     const batch = createSimForceBatch(wasm, 4);
-    const [oldIn, oldOut] = wasm.allocateGrid.mock.results.map((r) => r.value as number);
+    const [oldIn, oldOut, oldRefused] = wasm.allocateGrid.mock.results.map((r) => r.value as number);
     let calls = 0;
     wasm.allocateGrid.mockImplementation((count: number) => {
       calls += 1;
@@ -186,7 +217,7 @@ describe('createSimForceBatch heap failures', () => {
     expect(() => computeSimForces(wasm, batch, null, samples, n, out)).toThrow(WasmHeapExhaustedError);
     batch.dispose();
     const freed = wasm.freeGrid.mock.calls.map((c) => c[0] as number);
-    // The old pair once (by the grow), the new input once (by allocateGrids' unwind), nothing twice.
-    expect(freed.sort()).toEqual([oldIn, oldOut, 4096].sort());
+    // The old three once (by the grow), the new input once (by allocateGrids' unwind), nothing twice.
+    expect(freed.sort()).toEqual([oldIn, oldOut, oldRefused, 4096].sort());
   });
 });

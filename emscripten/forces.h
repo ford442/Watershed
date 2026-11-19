@@ -23,12 +23,12 @@ struct WaterForceResult {
 };
 
 /** Archimedes buoyancy: F_b = ρ · V_displaced · g (N). */
-float computeBuoyancy(float submergedVolume,
+[[nodiscard]] float computeBuoyancy(float submergedVolume,
                       float waterDensity,
                       float gravity) noexcept;
 
 /** Full water-force solve for a single body (buoyancy + flow + drag + turbulence). */
-WaterForceResult calculateWaterForce(float posX, float posY, float posZ,
+[[nodiscard]] WaterForceResult calculateWaterForce(float posX, float posY, float posZ,
                                      float velX, float velY, float velZ,
                                      float flowDirX, float flowDirZ,
                                      float flowSpeed,
@@ -46,11 +46,22 @@ WaterForceResult calculateWaterForce(float posX, float posY, float posZ,
  * Batch ABI for workers.
  *   input  stride 8: [posX, posY, posZ, velX, velY, velZ, flowDirX, flowDirZ]
  *   output stride 8: [forceX, forceY, forceZ, buoyancy, drag, flow, turbulence, submergedRatio]
- * Returns WS_OK, or WS_REJECTED (output untouched) for a null pointer or a
- * sampleCount outside [1, WATER_FORCE_MAX_SAMPLES].
+ *   refused stride 1 (optional, 0 = none): 1 for a refused row, else 0
+ *
+ * Finite or refused (ABI 18): a row whose 8 inputs are not all finite, or
+ * whose 8 results would not all be finite (a finite-but-huge velocity
+ * squares to +inf), is written as 8 zeros — the forces of a body out of the
+ * water — and flagged. Before ABI 18 a NaN posY walked through clampf and
+ * came out as NaN forces under WS_OK.
+ *
+ * Returns WS_OK (every row computed), WS_PARTIAL (every row written, some
+ * refused), or WS_REJECTED (nothing written) for a null input / output, a
+ * sampleCount outside [1, WATER_FORCE_MAX_SAMPLES], or a non-finite config
+ * scalar (it would refuse every row).
  */
-int computeWaterForcesBatch(uintptr_t inputPtr,
+[[nodiscard]] int computeWaterForcesBatch(uintptr_t inputPtr,
                             uintptr_t outputPtr,
+                            uintptr_t refusedPtr,
                             int sampleCount,
                             float flowSpeed,
                             float waterLevel,

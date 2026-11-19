@@ -11,7 +11,9 @@ The module lives in `emscripten/` and is compiled to
 `public/watershed_native.js` + `public/watershed_native.wasm` using
 [Emscripten](https://emscripten.org/).
 
-TypeScript bindings are in `src/systems/water/WatershedWasm.ts`.
+The export surface is declared once in `emscripten/abi.def` (ABI 18, #575); the TypeScript
+binding is `src/systems/water/wasmAbi.ts` over the generated `wasmAbi.generated.ts`, and the
+heap-backed helpers (`createSWEGrid`, `createWaterForceBatch`) are in `WatershedWasm.ts`.
 
 ### Why C++/WASM?
 
@@ -40,7 +42,10 @@ emscripten/
 ├── particles.cpp     # Euler + chute recycle / age
 ├── routing.h         # Channel routing along the campaign chain — host-clean
 ├── routing.cpp       # Kinematic-storage routing + edge-stage rating (ABI 10)
-├── bindings.cpp      # The C ABI: extern "C" ws_* exports + ws_getVersion(); the only Emscripten include
+├── abi.def           # THE C ABI (#575): every export, its kinds/units, return, header; X-macro syntax
+├── abi_generated.h   # GENERATED from abi.def (scripts/gen-abi.mjs): constants + the extern "C" ws_* wrappers
+├── bindings.cpp      # Includes the generated wrappers; the only Emscripten include
+├── fuzz-seeds/       # Committed libFuzzer seeds, one per finite-or-refused case (scripts/fuzz-seeds.mjs)
 ├── host_smoke.cpp    # Host assert runner (no Emscripten headers), sentinels included
 ├── fuzz_input.h      # Byte reader shared by the libFuzzer targets (host only)
 ├── swe_fuzz.cpp      # libFuzzer: step / inflow step / event / scroll
@@ -53,7 +58,9 @@ emscripten/
 └── CMakeLists.txt    # Compute static lib + WASM exe + host smoke; compile_commands ON
 
 src/systems/water/
-├── wasmAbi.ts              # WASM_ABI table, WatershedNativeModule, bindNativeModule()
+├── wasmAbi.generated.ts    # GENERATED from abi.def: branded export interface, WASM_ABI table, constants
+├── wasmAbi.ts              # WatershedNativeModule, bindNativeModule(), heap helpers (re-exports the generated half)
+├── wasmUnits.ts            # The brands: Ptr<F32>, Seconds, Metres, Cells, … (erased; a plain number passes)
 ├── wasmLoader.ts           # fetch once, hash once, instantiate, bind — getWasm() + the worker's loader
 ├── wasmTrap.ts             # name the function a trap happened in (symbol map / name section)
 ├── WatershedWasm.ts        # createSWEGrid / createWaterForceBatch (heap views)
@@ -69,12 +76,14 @@ public/               # COMMITTED build artefacts — the shipped pair
 
 - `<emscripten/emscripten.h>` appears only in `bindings.cpp`, the plain C ABI (#467). Compute
   TUs build on the host too.
-- Every export is `extern "C" EMSCRIPTEN_KEEPALIVE ws_<name>` (JS: `Module._ws_<name>`). Only
-  scalars and heap byte offsets cross; the three struct results (`WaterForceResult`, `Vec3`,
-  `RoutedEdge`) are written through a trailing out-pointer, and `bindings.cpp`
-  `static_assert`s their packed float layout.
-- Every TU, `bindings.cpp` included, compiles with `-fno-rtti -fno-exceptions`. There is no
-  `--bind` and no RTTI anywhere in the release link.
+- Every export is `extern "C" EMSCRIPTEN_KEEPALIVE ws_<name>` (JS: `Module._ws_<name>`),
+  declared in `abi.def` and generated into `abi_generated.h` (#575). Only scalars and heap byte
+  offsets cross; the one struct result (`RoutedEdge`) and the particle seeds are written through a
+  trailing out-pointer, and the generated header `static_assert`s the struct's packed float
+  layout field by field.
+- Every TU, `bindings.cpp` included, compiles with `-fno-rtti -fno-exceptions` — the wasm build
+  and, since #575, the host smoke, sanitizer and fuzz builds too, so the host tests the same
+  language that ships. There is no `--bind` and no RTTI anywhere in the release link.
 - No target has `-pthread` / `SHARED_MEMORY`: there is one single-thread build
   (*Threads (retired)*, #533).
 
@@ -269,7 +278,7 @@ Release builds use `-s ASSERTIONS=0` for size; Debug builds enable `ASSERTIONS=2
    `WATERSHED_WASM_SHA` export (appended by `build.sh`) must name the same wasm. Either
    mismatch rejects with `WasmProvenanceMismatchError` before anything is instantiated.
 3. The same bytes go to the factory as `wasmBinary`, so the bytes hashed are the bytes that run.
-4. `ws_getVersion()` must equal `WASM_ABI_VERSION` (**17**) exactly — there is no floor
+4. `ws_getVersion()` must equal `WASM_ABI_VERSION` (**18**) exactly — there is no floor
    since #533 — then `bindNativeModule()` binds every `WASM_ABI` entry; a missing export
    is a `WasmAbiMismatchError`, not a later crash.
 
@@ -299,11 +308,11 @@ Every `ws_*` entry point therefore returns early on bad input; `std::span` views
 
 | TU | Rejected (no write) | Sentinel |
 |----|---------------------|----------|
-| `swe.cpp` | null `h`/`u`/`w`; `width`/`height` ≤ 0 or > `SWE_MAX_GRID_EXTENT` (4096); step: `dt`/`g`/`dx`/`H` not finite and > 0 (+inf `dt` included since ABI 17); event: non-finite placement, `strength` or `dt` | step → 0 s integrated; event / scroll → `WS_REJECTED`; a non-finite edge stage or scroll inflow is rest (0), a non-finite η/u/w is read as 0 by the lift; `allocateGrid(≤ 0)` and `allocateGrid(> WS_MAX_ELEMENTS)` → 0 |
+| `swe.cpp` | null `h`/`u`/`w`; `width`/`height` ≤ 0 or > `SWE_MAX_GRID_EXTENT` (4096); step: `dt`/`g`/`dx`/`H` not finite and > 0 (+inf `dt` included since ABI 17); event: non-finite placement, `strength` or `dt`; event radius / strength / dt past `SWE_EVENT_MAX_*` (80 m, 200, 1 s; ABI 18) | step → 0 s integrated; event / scroll → `WS_REJECTED` (past the maxima: `WS_BAD_ARG`); a non-finite edge stage or scroll inflow is rest (0), a non-finite η/u/w is read as 0 by the lift; `allocateGrid(≤ 0)` and `allocateGrid(> WS_MAX_ELEMENTS)` → 0 |
 | `chores.cpp` | null src / out; count < 0 or > `WS_MAX_ELEMENTS` (4096²); src/blur extents ≤ 0 or > 4096; destination extent > 4096; `packSurfaceField`: a bad extent, a null plane, non-finite `H`, `dx` not finite and > 0 | `WS_REJECTED`. Count 0 is a valid empty grid (zeros / an all-zero histogram); a non-positive *destination* extent of `downsampleF32` is 1 (the `cpuMath.ts` contract) |
-| `forces.cpp` | null buffers; count ≤ 0 or > `WATER_FORCE_MAX_SAMPLES` (65536) | `WS_REJECTED` |
+| `forces.cpp` | null buffers; count ≤ 0 or > `WATER_FORCE_MAX_SAMPLES` (65536); a non-finite config scalar (ABI 18) | `WS_REJECTED`; a row with a non-finite input or result is zeros, flagged, and the call returns `WS_PARTIAL` (ABI 18) |
 | `routing.cpp` | null planes; `nSeg` ≤ 0 or > `ROUTING_MAX_SEGMENTS` (65536); `dt` < `ROUTING_MIN_DT` (1 µs), NaN or inf | `WS_REJECTED`; a non-finite head discharge, length or width takes its floor (`atLeast`: 0, 1 mm, 0.5 m); `routedEdgeState` → `{0, 0}` on non-finite / non-positive input |
-| `particles.cpp` | null base; capacity ≤ 0 or > `PARTICLE_MAX_CAPACITY` (2²⁰); `dt` ≤ 0 or non-finite; any non-finite shape / gravity / damping scalar | alloc → 0; init/step waterfall → `seed` unchanged; splash: `WS_REJECTED` |
+| `particles.cpp` | null base (or, for the waterfall, a null `seedOut`); capacity ≤ 0 or > `PARTICLE_MAX_CAPACITY` (2²⁰); `dt` ≤ 0 or non-finite; any non-finite shape / gravity / damping scalar | alloc → 0; everything else `WS_REJECTED` (since ABI 18 the waterfall exports return a status and write the seed through `seedOut`; before, a rejection returned the input seed, which read like success) |
 
 Scalar guards are written `!(x > 0)` or go through `std::isfinite`: `x <= 0` is false for NaN,
 and `std::max(x, lo)` returns its first operand when that is NaN, so a NaN `dt` used to reach
@@ -311,12 +320,15 @@ the CFL clamp and write NaN into every cell for the session, and a NaN head disc
 same to the routed chain. `sweSim.ts` / `WgslSweSim.ts` also skip the solver for a non-finite
 `dt`, and `riverRouter.ts` advances nothing on one.
 
-**Statuses (ABI 17, #533).** Every export that can refuse its arguments says so: an int
-`WS_OK` (1) / `WS_REJECTED` (0) (`common.h`; `wasmAbi.ts` mirrors both and
-`wasmAbiVersion.drift.test.ts` pins them) from `computeWaterForcesBatch`, `applySWEEvent`,
-`scrollShallowWater`, `routeReach` / `routeReachLateral` / `routeReachSteady` /
-`routeReachTravelTime`, the five chores, `packSurfaceField` and `stepSplashParticles`; the
-two steps return the time integrated instead (0 = rejected). Before ABI 17 a rejected call
+**Statuses (ABI 17, #533; ABI 18, #575).** Every export that can refuse its arguments says so:
+an int `WS_OK` (1) / `WS_REJECTED` (0) / `WS_PARTIAL` (2) / `WS_BAD_ARG` (3) (declared in
+`abi.def`, generated into `abi_generated.h` and `wasmAbi.generated.ts`) from
+`computeWaterForcesBatch`, `applySWEEvent`, `scrollShallowWater`, `routeReach` /
+`routeReachLateral` / `routeReachSteady` / `routeReachTravelTime`, the five chores,
+`packSurfaceField`, the three particle steps; the two SWE steps return the time integrated
+instead (0 = rejected). Every status-returning function is `[[nodiscard]]`, so ignoring one is
+a compile error (the harnesses assert theirs: `requireOk` / `requireRejected` in
+`host_smoke.cpp`). Before ABI 17 a rejected call
 was a silent no-op and the caller read its output buffer as if fresh. A rejected call writes
 nothing; the TS caller warns once per export in dev (`warnRejected`, `wasmAbi.ts`) and never
 reads the untouched buffer as fresh: the SWE field and the packed flow plane keep their last
@@ -399,20 +411,67 @@ the Emscripten sysroot).
 
 ## API reference
 
-Every function below is a `ws_<name>` C export, listed once in `WASM_ABI`
-(`src/systems/water/wasmAbi.ts`) with its arity, and bound onto `WatershedNativeModule` by
-`bindNativeModule()`: scalar exports are the raw functions themselves; the three struct results
-are read back from a scratch block the binding reserves once. `wasmLoader.test.ts` asserts the
-glue exposes exactly the table's exports with the declared arities, and
-`node scripts/wasm-exports.mjs public <other-dir>` diffs two builds' export lists.
+Every function below is a `ws_<name>` C export, declared once in
+[`emscripten/abi.def`](emscripten/abi.def) (#575): its parameters with their kinds (and so
+their units), its return, and the header of the implementation it forwards to.
+`node scripts/gen-abi.mjs` (`pnpm gen:abi`) generates the rest from it — the `extern "C"`
+wrappers and constants in `emscripten/abi_generated.h`, the branded TS interface, the
+`WASM_ABI` arity table and the mirrored constants in `src/systems/water/wasmAbi.generated.ts`,
+and the table below. `gen-abi --check` runs in `pnpm typecheck` and as a step of every CMake
+build (target `abi_check`): it fails when a generated file drifted, or when an
+implementation's prototype in its header does not take abi.def's parameters with the same C
+types, names and order. TS parameters are branded by kind (`wasmUnits.ts`: `Ptr<F32>`,
+`Seconds`, `Metres`, `Cells`, …): the brands are erased and a plain `number` still passes, but
+passing `Seconds` where a `Metres` is declared is a `tsc` error, so a swap between two branded
+locals fails at the call site.
+
+`bindNativeModule()` binds the table onto `WatershedNativeModule`: scalar exports are the raw
+functions themselves; the out-pointer results are read back from a scratch block the binding
+reserves once. `wasmLoader.test.ts` asserts the glue exposes exactly the table's exports with
+the declared arities, and `node scripts/wasm-exports.mjs public <other-dir>` diffs two builds'
+export lists.
+
+<!-- gen-abi:begin (scripts/gen-abi.mjs from emscripten/abi.def; do not edit) -->
+
+ABI **18**: 25 exports.
+
+| Export | Parameters (kind) | Returns | Implementation |
+|---|---|---|---|
+| `ws_getVersion` | — | I32 | — |
+| `ws_computeWaterForcesBatch` | inputPtr: PtrF32, outputPtr: PtrF32, refusedPtr: PtrF32, sampleCount: Count, flowSpeed: MetresPerSecond, waterLevel: Metres, raftMass: Kilograms, raftVolume: CubicMetres, dragCoefficient: F32, frontalArea: SquareMetres, sideArea: SquareMetres, timeSeconds: Seconds, turbulenceStrength: F32, turbulenceFrequency: PerSecond | Status | `forces.h` |
+| `ws_stepShallowWater` | hPtr: PtrF32, uPtr: PtrF32, wPtr: PtrF32, bPtr: PtrF32, width: Cells, height: Cells, dt: Seconds, g: MetresPerSecondSquared, dx: Metres, H: Metres | Seconds | `swe.h` |
+| `ws_stepShallowWaterInflow` | hPtr: PtrF32, uPtr: PtrF32, wPtr: PtrF32, bPtr: PtrF32, width: Cells, height: Cells, dt: Seconds, g: MetresPerSecondSquared, dx: Metres, H: Metres, edgeEta: Metres | Seconds | `swe.h` |
+| `ws_applySWEEvent` | hPtr: PtrF32, uPtr: PtrF32, wPtr: PtrF32, bPtr: PtrF32, width: Cells, height: Cells, dx: Metres, originX: Metres, originZ: Metres, H: Metres, kind: Index, cx: Metres, cz: Metres, radius: Metres, strength: F32, dt: Seconds | Status | `swe.h` |
+| `ws_scrollShallowWater` | hPtr: PtrF32, uPtr: PtrF32, wPtr: PtrF32, bPtr: PtrF32, width: Cells, height: Cells, shiftX: Cells, shiftZ: Cells, inflowEta: Metres, inflowU: MetresPerSecond, inflowW: MetresPerSecond | Status | `swe.h` |
+| `ws_reserveShallowWaterScratch` | width: Cells, height: Cells | void | `swe.h` |
+| `ws_allocateGrid` | count: Count | PtrF32 | `swe.h` |
+| `ws_freeGrid` | ptr: PtrF32 | void | `swe.h` |
+| `ws_routeReach` | lengthsPtr: PtrF32, slopesPtr: PtrF32, widthsPtr: PtrF32, nSeg: Count, inflowQ: CubicMetresPerSecond, dt: Seconds, storagePtr: PtrF32, outflowPtr: PtrF32 | Status | `routing.h` |
+| `ws_routeReachLateral` | lengthsPtr: PtrF32, slopesPtr: PtrF32, widthsPtr: PtrF32, nSeg: Count, inflowQ: CubicMetresPerSecond, lateralPtr: PtrF32, dt: Seconds, storagePtr: PtrF32, outflowPtr: PtrF32 | Status | `routing.h` |
+| `ws_routeReachSteady` | lengthsPtr: PtrF32, slopesPtr: PtrF32, widthsPtr: PtrF32, nSeg: Count, Q: CubicMetresPerSecond, storagePtr: PtrF32, outflowPtr: PtrF32 | Status | `routing.h` |
+| `ws_routeReachTravelTime` | lengthsPtr: PtrF32, slopesPtr: PtrF32, widthsPtr: PtrF32, nSeg: Count, Q: CubicMetresPerSecond, lagPtr: PtrF32 | Status | `routing.h` |
+| `ws_routedEdgeState` | Q: CubicMetresPerSecond, Qref: CubicMetresPerSecond, H: Metres, g: MetresPerSecondSquared | void (writes `RoutedEdge`) | `routing.h` |
+| `ws_reduceF32Grid` | src: PtrF32, count: Count, out3: PtrF32 | Status | `chores.h` |
+| `ws_histogramF32` | src: PtrF32, count: Count, rangeMin: F32, rangeMax: F32, binsPtr: PtrU32 | Status | `chores.h` |
+| `ws_lumaHistogramU8` | rgba: PtrU8, pixelCount: Count, binsPtr: PtrU32 | Status | `chores.h` |
+| `ws_downsampleF32` | src: PtrF32, srcW: Cells, srcH: Cells, dst: PtrF32, dstW: Cells, dstH: Cells | Status | `chores.h` |
+| `ws_blurSeparableF32` | src: PtrF32, dst: PtrF32, width: Cells, height: Cells | Status | `chores.h` |
+| `ws_packSurfaceField` | hPtr: PtrF32, uPtr: PtrF32, wPtr: PtrF32, bPtr: PtrF32, width: Cells, height: Cells, H: Metres, dx: Metres, outRgba: PtrF32 | Status | `chores.h` |
+| `ws_allocateParticleSoA` | capacity: Count | PtrSoA | `particles.h` |
+| `ws_freeParticleSoA` | ptr: PtrSoA | void | `particles.h` |
+| `ws_initWaterfallParticles` | base: PtrSoA, capacity: Count, active: Count, width: Metres, height: Metres, depthZ: Metres, fanSpreadRad: Radians, seed: U32, seedOut: OutU32 | Status | `particles.h` |
+| `ws_stepWaterfallParticles` | base: PtrSoA, capacity: Count, active: Count, dt: Seconds, width: Metres, height: Metres, depthZ: Metres, seed: U32, seedOut: OutU32 | Status | `particles.h` |
+| `ws_stepSplashParticles` | base: PtrSoA, capacity: Count, count: Count, dt: Seconds, gravityY: MetresPerSecondSquared, damp: F32 | Status | `particles.h` |
+
+<!-- gen-abi:end -->
 
 ### `getVersion(): number`
 
 Returns the module ABI version integer. The loader requires it to equal
-`WASM_ABI_VERSION` (**17**) exactly. Bump `WATERSHED_ABI_VERSION` in `bindings.cpp` and
-`WASM_ABI_VERSION` in `wasmAbi.ts` together whenever the exported surface, an export's
-contract or a batch stride changes; `wasmAbiVersion.drift.test.ts` fails `pnpm test` when the
-two differ, or when this file states another version.
+`WASM_ABI_VERSION` (**18**) exactly. Bump `WS_ABI_VERSION` in `abi.def` and run
+`pnpm gen:abi` whenever the exported surface, an export's contract or a batch stride
+changes; the C++ and TS numbers are both generated from that one line, and
+`wasmAbi.generated.test.ts` fails `pnpm test` when this file states another version.
 
 | Version | Change |
 |---------|--------|
@@ -432,9 +491,10 @@ two differ, or when this file states another version.
 | 14 | Weather on the river: `routeReachLateral` (lateral inflow per segment) and `applySWEEvent` kind 4 (surge front). Additive; `MIN_WASM_ABI_VERSION` moves to 14 for the same bind-every-entry reason. |
 | 15 | **Breaking.** The single-body force exports are gone: `calculateBuoyancyAndDrag`, `calculateWaterForce`, `computeBuoyancy`, `computeDragForce`, `computeFlowForce` had no game caller left — the sim worker and the main thread both go through `computeWaterForcesBatch`, whose per-sample math is forces.cpp's `calculateWaterForce` (still the function the host smoke and the fuzzer drive). `routedEdgeState` is the one out-pointer result left. `MIN_WASM_ABI_VERSION` moves to 15. |
 | 16 | **Breaking.** `buildTerrainTile` / `buildWallShell` are gone with `terrain.cpp`: the sim worker builds the tile with the same TypeScript as the main thread (`terrainTile.ts`; see *Terrain tiles*). `MIN_WASM_ABI_VERSION` moves to 16. |
+| 18 | **Breaking (#575).** Finite or refused, one ABI source. Every export is declared once in `abi.def`; the C wrappers, constants, branded TS interface, `WASM_ABI` table and the export table below are generated (`scripts/gen-abi.mjs`), and `gen-abi --check` holds each implementation's header prototype to it by type, name and order. `computeWaterForcesBatch` takes a refused-row plane (3rd argument): a row with a non-finite input or result is zeros, flagged, and the call returns `WS_PARTIAL`; a non-finite config is `WS_REJECTED`. `applySWEEvent` returns `WS_BAD_ARG` for a radius / strength / dt past `SWE_EVENT_MAX_*`. `initWaterfallParticles` / `stepWaterfallParticles` return a status and write the seed through a trailing `seedOut`. |
 | 17 | **Breaking (#533).** One set of numbers, round two. `stepShallowWater` / `stepShallowWaterInflow` sub-cycle (≤ 4 CFL steps) and return the time integrated as a float (0 = rejected; +inf `dt` is rejected); damping is `exp(−k·dt)`. Every export that can refuse its arguments returns an int status (`WS_OK` 1 / `WS_REJECTED` 0) instead of being a silent no-op: `computeWaterForcesBatch`, `applySWEEvent`, `scrollShallowWater`, the four `routeReach*`, the five chores, `stepSplashParticles`. New: `packSurfaceField` (the SWE flow texture's bytes, `chores.cpp`). The floor is gone: the loader requires an exact version match. |
 
-TypeScript (`wasmLoader.ts`, both owners) requires `ws_getVersion()` === `WASM_ABI_VERSION` (**17**).
+TypeScript (`wasmLoader.ts`, both owners) requires `ws_getVersion()` === `WASM_ABI_VERSION` (**18**).
 Through ABI 16 it asserted a floor, `MIN_WASM_ABI_VERSION`, so additive bumps (1–5, 7–11)
 could lag behind it. Since ABI 12 `bindNativeModule` requires every `WASM_ABI` entry, so a
 floor below the current version only admitted binaries the bind rejected anyway — and ABI 17
@@ -463,17 +523,24 @@ cannot see. One number, checked for equality, says what the table says. Chore ke
 
 Add the `.cpp` to `COMPUTE_SOURCES` in `CMakeLists.txt` (the source of truth;
 `build.sh` wraps CMake). Declare its functions in a host-clean header
-(`common.h`, or a new `<unit>.h` that includes it), export each one as a
-`WS_EXPORT ws_<name>` forwarder in `bindings.cpp`, add the matching entry
-(arity, and `out` / `returns: 'u32'` where needed) to `WASM_ABI` and the
-`WatershedNativeModule` interface in `wasmAbi.ts`, and bump `ws_getVersion()`.
-Never put compile or link flags in a shell script.
+(`common.h`, or a new `<unit>.h` that includes it, and that `bindings.cpp`
+includes). Declare each export in `abi.def` — kinds, return, that header — bump
+`WS_ABI_VERSION`, and run `pnpm gen:abi`: the wrapper, the TS interface and
+table entry and the reference table are generated. Never put compile or link
+flags in a shell script.
 
-### `computeWaterForcesBatch(inputPtr, outputPtr, sampleCount, flowSpeed, waterLevel, raftMass, raftVolume, dragCoefficient, frontalArea, sideArea, timeSeconds, turbulenceStrength, turbulenceFrequency): int`
+### `computeWaterForcesBatch(inputPtr, outputPtr, refusedPtr, sampleCount, flowSpeed, waterLevel, raftMass, raftVolume, dragCoefficient, frontalArea, sideArea, timeSeconds, turbulenceStrength, turbulenceFrequency): int`
 
 The water-force export (single-body forms removed in ABI 15). Returns `WS_OK`, or
-`WS_REJECTED` with the output untouched (ABI 17); the batch helpers then zero the rejected
-samples, so a stale force is never applied as fresh. `sampleCount` bodies
+`WS_REJECTED` with the output untouched (ABI 17; a null buffer, a bad count, a non-finite
+config scalar since 18); the batch helpers then zero the rejected samples, so a stale force is
+never applied as fresh. **Finite or refused (ABI 18, #575):** a row whose 8 inputs are not all
+finite, or whose 8 results would not be (a finite velocity of 3e19 squares to +inf at float32),
+is written as zeros — a body out of the water — flagged 1 in the optional `refusedPtr` plane (one
+float per sample; 0 = no plane), and the call returns `WS_PARTIAL`. Before ABI 18 a NaN `posY`
+walked through `clampf` and came out as NaN forces under `WS_OK`. `waterForceFallback.ts` applies
+the same rule at float32, `simForces.ts` marks the row `FORCE_FLAG_REFUSED` and the main thread
+skips it, and `forces_fuzz.cpp` checks the claim for any bit pattern. `sampleCount` bodies
 share one config; each sample is 8 input floats and 8 output floats
 (`WATER_FORCE_INPUT_STRIDE` / `WATER_FORCE_OUTPUT_STRIDE`):
 
@@ -485,7 +552,7 @@ share one config; each sample is 8 input floats and 8 output floats
 Per sample: Archimedes buoyancy **F_b = ρ · V_displaced · g** on the submerged
 fraction, relative-velocity current drag along the flow, velocity drag
 **½ · ρ · \|v\|² · C_d · A**, and turbulence. Apply the result as a Rapier impulse.
-`createWaterForceBatch(wasm, n)` (`WatershedWasm.ts`) owns the two blocks:
+`createWaterForceBatch(wasm, n)` (`WatershedWasm.ts`) owns the three blocks (`isRefused(i)` reads the flag):
 
 ```typescript
 const batch = createWaterForceBatch(wasm, 1);
@@ -543,6 +610,12 @@ CFL-clamped. Four sub-steps cover the TS caller's 0.05 s cap down to a 0.0125 s 
 - **Non-finite state heals.** The lift reads a NaN or ±inf η, u or w as 0. Before, a NaN
   velocity lifted into `qx = d·NaN`, took the HLL branch (every comparison false) and spread two
   cells per step.
+- **The bed is finite before the solver sees it (#575).** The lift does not purge `b`: a NaN bed
+  cell lifted to depth `max(0, NaN) = 0` and wrote `η = 0 + NaN − H`, a NaN `h` on every step.
+  The bed is written in TypeScript and published through `SweSim.commitBed()` on every backend,
+  so it is repaired once there (`sweBedGuard.ts`: a non-finite cell becomes the dry bank the
+  rasterizer writes, `SWE_DRY_BANK_BED`), not re-checked per cell per step; the repairs are
+  counted (`sweBedRepairCount()`, and `repairedCells` in the HUD bed snapshot).
 - `stepShallowWaterInflow` (ABI 10, below) has the same contract.
 
 Use the `createSWEGrid()` helper to manage allocations:
@@ -624,7 +697,13 @@ and swirls), 2 braid (raises `b`), 3 roughness (damps u, w), 4 surge (ABI 14: a 
 front across the whole window, `|z − cz| ≤ radius`, `cx` unused, that raises η toward
 `strength` metres with the downstream speed a bore of that height carries). Returns `WS_OK`, or
 `WS_REJECTED` with nothing written for a bad extent, a null plane, `dx` ≤ 0, or a non-finite
-placement / strength / dt. `swe.wgsl` twins every kind.
+placement / strength / dt. **Finite or refused (ABI 18, #575):** a radius, strength or dt past
+`SWE_EVENT_MAX_RADIUS` (80 m) / `SWE_EVENT_MAX_STRENGTH` (200) / `SWE_EVENT_MAX_DT` (1 s) returns
+`WS_BAD_ARG` and writes nothing — before, a finite radius of 3e38 overflowed `r*r` and left every
+cell non-finite under `WS_OK`. The maxima are the authored ranges: `level.schema.json` (so the
+validator, and with it a `#river=` share link, refuses the same numbers) and `parseHydroEvents`
+take the same values, pinned by `hydroEventRange.drift.test.ts`, so a shared river fails at load,
+never in the solver. `swe.wgsl` twins every kind.
 
 ### `packSurfaceField(hPtr, uPtr, wPtr, bPtr, width, height, H, dx, outRgbaPtr): int`  (ABI 17, `chores.cpp`)
 

@@ -34,7 +34,7 @@ import { isWorkerSweSim } from '../../sim/workerSweSim';
 import {
   FORCE_SAMPLE_STRIDE,
   readForceFlow,
-  readForceResult,
+  isForceRefused, readForceResult,
   writeForceSample,
 } from '../../sim/simForces';
 import type { SimForceRequests } from '../../sim/simForceRequests';
@@ -144,7 +144,8 @@ function applyWorkerForces(
       } else if (registered.has(target.body)) {
         body = target.body;
       }
-      if (!body) continue;
+      // Refused by the native batch (ABI 18): zeros, nothing to apply.
+      if (!body || isForceRefused(batch.results, i)) continue;
       const force = readForceResult(batch.results, i);
       try {
         body.applyImpulse(

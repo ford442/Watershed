@@ -22,21 +22,19 @@ inline constexpr float WATER_DENSITY_DEFAULT = 1000.0f;  // kg/m³  (fresh water
 inline constexpr float GRAVITY_DEFAULT       = 9.80665f; // m/s² (standard gravity)
 inline constexpr float DAMPING_COEFF         = 0.1f;     // velocity damping rate (1/s): v *= exp(-DAMPING_COEFF·dt)
 
-/** Batch ABI stride, in floats. Mirrored by WATER_FORCE_*_STRIDE in WatershedWasm.ts. */
-inline constexpr int WATER_FORCE_INPUT_STRIDE  = 8;
-inline constexpr int WATER_FORCE_OUTPUT_STRIDE = 8;
-/** Largest batch computeWaterForcesBatch accepts (#502); a larger count is a no-op. */
-inline constexpr int WATER_FORCE_MAX_SAMPLES = 1 << 16;
-
-/**
- * Status of an export that can refuse its arguments (#533). Before ABI 17 a
- * rejected call (an extent past SWE_MAX_GRID_EXTENT, a non-finite scalar, a
- * batch past its cap) was a silent no-op, and the caller read its output
- * buffer as if fresh. Now it returns WS_REJECTED and writes nothing; the TS
- * bindings warn once in dev and keep their own last good result.
- */
-inline constexpr int WS_OK = 1;
-inline constexpr int WS_REJECTED = 0;
+// The ABI's constants — WS_OK / WS_REJECTED / WS_PARTIAL / WS_BAD_ARG, the
+// force batch strides and cap, PARTICLE_SOA_PLANES, ROUTING_SUBREACHES, the
+// applySWEEvent maxima — are declared once in abi.def and generated here
+// (#575), with their TS twins in wasmAbi.generated.ts.
+//
+// Statuses (#533, #575). Before ABI 17 a rejected call (an extent past
+// SWE_MAX_GRID_EXTENT, a non-finite scalar, a batch past its cap) was a silent
+// no-op, and the caller read its output buffer as if fresh. Now it returns
+// WS_REJECTED and writes nothing; the TS bindings warn once in dev and keep
+// their own last good result. Since ABI 18 a batch that refused some rows
+// returns WS_PARTIAL (those rows are zeros and flagged), and finite arguments
+// past a documented maximum return WS_BAD_ARG.
+#include "abi_generated.h"
 
 /**
  * Largest width or height any grid entry point accepts (#467, #502 for the

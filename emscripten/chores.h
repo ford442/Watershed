@@ -12,19 +12,19 @@
 #include <cstdint>
 
 /** Write min, max, mean (3 floats) for `count` source floats. */
-int reduceF32Grid(uintptr_t src, int count, uintptr_t out3);
+[[nodiscard]] int reduceF32Grid(uintptr_t src, int count, uintptr_t out3);
 
 /** 256-bin histogram of scalar floats into `binsPtr` (256 uint32). */
-int histogramF32(uintptr_t src, int count, float rangeMin, float rangeMax, uintptr_t binsPtr);
+[[nodiscard]] int histogramF32(uintptr_t src, int count, float rangeMin, float rangeMax, uintptr_t binsPtr);
 
 /** 256-bin BT.709 luma histogram of packed RGBA8. */
-int lumaHistogramU8(uintptr_t rgba, int pixelCount, uintptr_t binsPtr);
+[[nodiscard]] int lumaHistogramU8(uintptr_t rgba, int pixelCount, uintptr_t binsPtr);
 
 /** Box-filter downsample of a row-major f32 grid. */
-int downsampleF32(uintptr_t src, int srcW, int srcH, uintptr_t dst, int dstW, int dstH);
+[[nodiscard]] int downsampleF32(uintptr_t src, int srcW, int srcH, uintptr_t dst, int dstW, int dstH);
 
 /** Separable 3-tap [0.25, 0.5, 0.25] blur. */
-int blurSeparableF32(uintptr_t src, uintptr_t dst, int width, int height);
+[[nodiscard]] int blurSeparableF32(uintptr_t src, uintptr_t dst, int width, int height);
 
 /**
  * The SWE flow texture's bytes (#533): RGBA f32 per cell, row-major like `h`,
@@ -41,7 +41,7 @@ int blurSeparableF32(uintptr_t src, uintptr_t dst, int width, int height);
  * not alias the inputs. Returns WS_OK, or WS_REJECTED (nothing written) for a
  * bad extent, a null plane, a non-finite H, or dx not finite and > 0.
  */
-int packSurfaceField(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t bPtr,
+[[nodiscard]] int packSurfaceField(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t bPtr,
                      int width, int height, float H, float dx, uintptr_t outRgba);
 
 #endif  // WATERSHED_CHORES_H

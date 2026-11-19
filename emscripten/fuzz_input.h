@@ -73,6 +73,8 @@ struct Field {
 
 template <typename T>
 inline uintptr_t ptr(std::vector<T>& v) { return reinterpret_cast<uintptr_t>(v.data()); }
+/** One scalar's address: an out-pointer (a particle seed, ABI 18). */
+inline uintptr_t ptr(uint32_t& v) { return reinterpret_cast<uintptr_t>(&v); }
 
 }  // namespace fuzz
 

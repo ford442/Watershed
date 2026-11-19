@@ -30,6 +30,8 @@ import { SWE_REST_INFLOW, scrollField, scrollTexels, type SweInflow } from '../s
 import { SIM_FRAME_SURFACE_CHANNELS, viewSimFrame } from './SimFrame';
 import type { SimWorkerProxy } from './createSimWorkerProxy';
 import type { SimRoute, SimScrollFill } from './simWorkerProtocol';
+import { sanitizeBed } from '../systems/water/sweBedGuard';
+import type { Cells, Metres } from '../systems/water/wasmUnits';
 
 /** A `SweSim` whose solver, router and force sampling live in the sim worker. */
 export interface WorkerSweSim extends SweSim {
@@ -61,9 +63,9 @@ export function isWorkerSweSim(sim: SweSim | null): sim is WorkerSweSim {
 
 export function createWorkerSweSim(
   proxy: SimWorkerProxy,
-  width: number,
-  height: number,
-  dx: number,
+  width: Cells,
+  height: Cells,
+  dx: Metres,
 ): WorkerSweSim {
   const count = width * height;
   const gridId = proxy.allocateGridId();
@@ -151,10 +153,12 @@ export function createWorkerSweSim(
       return fieldVersion;
     },
     commitBed() {
-      if (disposed) return;
+      if (disposed) return 0;
+      const repaired = sanitizeBed(b);
       const copy = b.slice();
       proxy.post({ type: 'COMMIT_BED', gridId, b: copy }, [copy.buffer]);
       epoch += 1;
+      return repaired;
     },
     addSurface(index, amount) {
       // Finite at the door (#533): the worker applies these unchecked.

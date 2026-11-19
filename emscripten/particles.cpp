@@ -9,6 +9,7 @@
 
 #include <cstdint>
 #include <cstdlib>
+#include <cstring>
 #include <cmath>
 #include <cstddef>
 #include <span>
@@ -24,6 +25,11 @@ namespace {
 std::span<float> plane(uintptr_t base, int which, int capacity) {
     const std::size_t cap = static_cast<std::size_t>(capacity);
     return heapSpan<float>(base, PARTICLE_SOA_PLANES * cap).subspan(static_cast<std::size_t>(which) * cap, cap);
+}
+
+/** The advanced xorshift state, through the caller's out-pointer (memcpy: it is a float block to the allocator). */
+void writeSeed(uintptr_t seedOut, uint32_t s) {
+    std::memcpy(reinterpret_cast<void*>(seedOut), &s, sizeof s);
 }
 
 bool validCapacity(int capacity) {
@@ -77,12 +83,12 @@ void freeParticleSoA(uintptr_t ptr) {
     std::free(reinterpret_cast<void*>(ptr));
 }
 
-uint32_t initWaterfallParticles(uintptr_t base, int capacity, int active,
-                                float width, float height, float depthZ,
-                                float fanSpreadRad, uint32_t seed) {
-    if (base == 0 || !validCapacity(capacity)) return seed;
+int initWaterfallParticles(uintptr_t base, int capacity, int active,
+                           float width, float height, float depthZ,
+                           float fanSpreadRad, uint32_t seed, uintptr_t seedOut) {
+    if (base == 0 || seedOut == 0 || !validCapacity(capacity)) return WS_REJECTED;
     if (!std::isfinite(width) || !std::isfinite(height) || !std::isfinite(depthZ)
-        || !std::isfinite(fanSpreadRad)) return seed;
+        || !std::isfinite(fanSpreadRad)) return WS_REJECTED;
     if (active < 0) active = 0;
     if (active > capacity) active = capacity;
 
@@ -117,17 +123,18 @@ uint32_t initWaterfallParticles(uintptr_t base, int capacity, int active,
         maxLife[i] = 1.e9f;
         scale[i] = 0.5f + rand01(s) * 0.5f;
     }
-    return s;
+    writeSeed(seedOut, s);
+    return WS_OK;
 }
 
-uint32_t stepWaterfallParticles(uintptr_t base, int capacity, int active,
-                                float dt, float width, float height, float depthZ,
-                                uint32_t seed) {
-    if (base == 0 || !validCapacity(capacity)) return seed;
+int stepWaterfallParticles(uintptr_t base, int capacity, int active,
+                           float dt, float width, float height, float depthZ,
+                           uint32_t seed, uintptr_t seedOut) {
+    if (base == 0 || seedOut == 0 || !validCapacity(capacity)) return WS_REJECTED;
     // !(dt > 0) also rejects NaN; a non-finite scalar would be integrated into
     // every live particle (and respawned into new ones) for good.
     if (!(dt > 0.f) || !std::isfinite(dt) || !std::isfinite(width) || !std::isfinite(height)
-        || !std::isfinite(depthZ)) return seed;
+        || !std::isfinite(depthZ)) return WS_REJECTED;
     if (active < 0) active = 0;
     if (active > capacity) active = capacity;
 
@@ -149,7 +156,8 @@ uint32_t stepWaterfallParticles(uintptr_t base, int capacity, int active,
             pz[i] = (rand01(s) - 0.5f) * depthZ;
         }
     }
-    return s;
+    writeSeed(seedOut, s);
+    return WS_OK;
 }
 
 int stepSplashParticles(uintptr_t base, int capacity, int count,

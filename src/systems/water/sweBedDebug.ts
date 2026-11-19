@@ -18,6 +18,8 @@ export interface SWEBedSnapshot {
   originZ: number;
   /** Cells a registered canyon segment actually covered. */
   coveredCells: number;
+  /** Non-finite cells commitBed repaired to a dry bank in this snapshot (sweBedGuard.ts, #575). */
+  repairedCells?: number;
   sourceCount: number;
 }
 

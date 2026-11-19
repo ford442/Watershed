@@ -14,34 +14,35 @@
  * GPU by the readback latency (one step at the budgeted rates). `fieldVersion`
  * bumps whenever the mirror changes, which is what upload consumers key on.
  */
-import { heapF32, warnRejected, WS_OK, type WatershedNativeModule } from './wasmAbi';
+import { heapF32, warnRejected, WS_OK, type Cells, type Metres, type MetresPerSecondSquared, type Seconds, type WatershedNativeModule } from './wasmAbi';
 import type { SWEGrid } from './WatershedWasm';
 import { createSWEGrid } from './WatershedWasm';
 import type { SweSimBackend } from './sweBackend';
 import { SWE_REST_INFLOW, type SweInflow } from './sweScroll';
+import { sanitizeBed } from './sweBedGuard';
 
 /** One `applySWEEvent` call, in world XZ (kinds: 0 inflow, 1 vortex, 2 braid, 3 roughness, 4 surge — ABI 14). */
 export interface SweEventCall {
   kind: number;
-  cx: number;
-  cz: number;
-  radius: number;
+  cx: Metres;
+  cz: Metres;
+  radius: Metres;
   strength: number;
-  dt: number;
+  dt: Seconds;
 }
 
 export interface SweStepInput {
-  dt: number;
-  g: number;
+  dt: Seconds;
+  g: MetresPerSecondSquared;
   /** Still-water depth over a zero bed (m). */
-  H: number;
+  H: Metres;
   /**
    * World XZ of grid cell (0, 0) — the window is player-centred and moves. Only
    * used to place `events`; the solver itself is origin-blind, which is why the
    * caller must `scroll()` the field whenever this moves a whole cell.
    */
-  originX: number;
-  originZ: number;
+  originX: Metres;
+  originZ: Metres;
   /** Authored hydro events applied after the step, in this order. */
   events: readonly SweEventCall[];
   /**
@@ -50,14 +51,14 @@ export interface SweStepInput {
    * edge transmissive (the pre-routing step); 0 is the reference discharge and
    * leaves still water still. See swe.h `stepShallowWaterInflow`.
    */
-  edgeEta?: number;
+  edgeEta?: Metres;
 }
 
 export interface SweSim {
   readonly backend: SweSimBackend;
-  readonly width: number;
-  readonly height: number;
-  readonly dx: number;
+  readonly width: Cells;
+  readonly height: Cells;
+  readonly dx: Metres;
   /** Free-surface perturbation η (0 at rest), velocities, and bed — swe.h ABI. */
   readonly h: Float32Array;
   readonly u: Float32Array;
@@ -66,8 +67,11 @@ export interface SweSim {
   readonly b: Float32Array;
   /** Bumps whenever h/u/w/b reflect a newer step. */
   readonly fieldVersion: number;
-  /** Publish a rewritten `b` to the solver. */
-  commitBed(): void;
+  /**
+   * Publish a rewritten `b` to the solver. Non-finite cells are repaired to a
+   * dry bank first (sweBedGuard.ts, #575); returns how many were.
+   */
+  commitBed(): number;
   /**
    * Add to η at a cell before the next step (splash disturbances). A
    * non-finite amount or an out-of-range / non-integer index is dropped at
@@ -120,9 +124,9 @@ export interface SweSim {
  */
 export function createWasmSweSim(
   wasm: WatershedNativeModule,
-  width: number,
-  height: number,
-  dx: number,
+  width: Cells,
+  height: Cells,
+  dx: Metres,
 ): SweSim {
   const grid: SWEGrid = createSWEGrid(wasm, width, height, dx);
   // η is a free-surface *perturbation* (swe.h ABI): at rest it is 0, not H.
@@ -147,7 +151,8 @@ export function createWasmSweSim(
     get b() { return grid.b; },
     get fieldVersion() { return fieldVersion; },
     commitBed() {
-      // The solver reads the heap directly; nothing to publish.
+      // The solver reads the heap directly; nothing to publish but the repair.
+      return sanitizeBed(grid.b);
     },
     addSurface(index, amount) {
       if (!Number.isInteger(index) || index < 0 || index >= count || !Number.isFinite(amount)) return;

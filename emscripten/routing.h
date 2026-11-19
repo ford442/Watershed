@@ -44,8 +44,8 @@
 #include "common.h"
 #include <cstdint>
 
-/** Reservoirs per segment. More sharpen the front; 4 keeps a ~100 m segment's lag crisp. */
-inline constexpr int ROUTING_SUBREACHES = 4;
+// ROUTING_SUBREACHES (4 reservoirs per segment: more sharpen the front; 4
+// keeps a ~100 m segment's lag crisp) is an ABI constant: abi.def.
 /**
  * Largest chain any routing entry point accepts (#502); more is a no-op, so
  * nSeg * ROUTING_SUBREACHES cannot overflow. A campaign chain is ~100 segments.
@@ -76,10 +76,10 @@ struct RoutedEdge {
 };
 
 /** Kinematic-wave celerity (m/s) for discharge Q in a segment of the given width and slope. */
-float routingCelerity(float Q, float width, float slope);
+[[nodiscard]] float routingCelerity(float Q, float width, float slope);
 
 /** Fill storage / outflow with the steady state that carries Q through every segment. */
-int routeReachSteady(uintptr_t lengthsPtr, uintptr_t slopesPtr, uintptr_t widthsPtr, int nSeg,
+[[nodiscard]] int routeReachSteady(uintptr_t lengthsPtr, uintptr_t slopesPtr, uintptr_t widthsPtr, int nSeg,
                      float Q, uintptr_t storagePtr, uintptr_t outflowPtr);
 
 /**
@@ -87,7 +87,7 @@ int routeReachSteady(uintptr_t lengthsPtr, uintptr_t slopesPtr, uintptr_t widths
  * Reservoirs are visited upstream → downstream, so a step's outflow feeds the
  * next reservoir as its mean inflow over the same step.
  */
-int routeReach(uintptr_t lengthsPtr, uintptr_t slopesPtr, uintptr_t widthsPtr, int nSeg,
+[[nodiscard]] int routeReach(uintptr_t lengthsPtr, uintptr_t slopesPtr, uintptr_t widthsPtr, int nSeg,
                float inflowQ, float dt, uintptr_t storagePtr, uintptr_t outflowPtr);
 
 /**
@@ -100,7 +100,7 @@ int routeReach(uintptr_t lengthsPtr, uintptr_t slopesPtr, uintptr_t widthsPtr, i
  *
  * All-zero lateral is routeReach bit for bit (routeReach calls this with none).
  */
-int routeReachLateral(uintptr_t lengthsPtr, uintptr_t slopesPtr, uintptr_t widthsPtr, int nSeg,
+[[nodiscard]] int routeReachLateral(uintptr_t lengthsPtr, uintptr_t slopesPtr, uintptr_t widthsPtr, int nSeg,
                       float inflowQ, uintptr_t lateralPtr, float dt, uintptr_t storagePtr,
                       uintptr_t outflowPtr);
 
@@ -109,7 +109,7 @@ int routeReachLateral(uintptr_t lengthsPtr, uintptr_t slopesPtr, uintptr_t width
  * end of each segment, for a steady discharge Q. lag[k] is the routed delay a
  * change at the head takes to reach segment k's outflow.
  */
-int routeReachTravelTime(uintptr_t lengthsPtr, uintptr_t slopesPtr, uintptr_t widthsPtr, int nSeg,
+[[nodiscard]] int routeReachTravelTime(uintptr_t lengthsPtr, uintptr_t slopesPtr, uintptr_t widthsPtr, int nSeg,
                          float Q, uintptr_t lagPtr);
 
 /**
@@ -122,6 +122,6 @@ int routeReachTravelTime(uintptr_t lengthsPtr, uintptr_t slopesPtr, uintptr_t wi
  * Q == Qref gives exactly (0, 0), so a reference-flow hour leaves the window
  * at rest. eta is clamped to [−0.9 H, 2 H].
  */
-RoutedEdge routedEdgeState(float Q, float Qref, float H, float g);
+[[nodiscard]] RoutedEdge routedEdgeState(float Q, float Qref, float H, float g);
 
 #endif  // WATERSHED_ROUTING_H

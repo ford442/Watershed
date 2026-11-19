@@ -8,7 +8,7 @@
  * already has them and the decline path is defensive.
  */
 
-import { warnRejected, WS_OK, type WatershedNativeModule } from '../../systems/water/wasmAbi';
+import { asPtr, warnRejected, WS_OK, type U32, type U8, type WatershedNativeModule } from '../../systems/water/wasmAbi';
 import {
   blurSeparableF32,
   downsampleF32,
@@ -104,7 +104,7 @@ export function createNativeChoreHost(resolve: () => WatershedNativeModule | nul
       return withHeap(wasm, values, (ptr) => {
         const binsPtr = wasm.allocateGrid(256);
         try {
-          if (wasm.histogramF32!(ptr, values.length, lo, hi, binsPtr) !== WS_OK) {
+          if (wasm.histogramF32!(ptr, values.length, lo, hi, asPtr<U32>(binsPtr)) !== WS_OK) {
             warnRejected('histogramF32', `count=${values.length}`);
             return histogramF32(values, values.length, rangeMin, rangeMax);
           }
@@ -132,7 +132,7 @@ export function createNativeChoreHost(resolve: () => WatershedNativeModule | nul
         wasm.HEAPU8.set(bytes, ptr);
         const binsPtr = wasm.allocateGrid(256);
         try {
-          if (wasm.lumaHistogramU8!(ptr, pixelCount, binsPtr) !== WS_OK) {
+          if (wasm.lumaHistogramU8!(asPtr<U8>(ptr), pixelCount, asPtr<U32>(binsPtr)) !== WS_OK) {
             warnRejected('lumaHistogramU8', `pixels=${pixelCount}`);
             return lumaHistogramU8(rgba, pixelCount);
           }

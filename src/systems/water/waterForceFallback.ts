@@ -49,19 +49,54 @@ export function calculateBuoyancyAndDragFallback(
   return Math.max(0, buoyancy - Math.max(0, raftMass) * 9.80665) + drag;
 }
 
+const ZERO_FORCE: Readonly<NativeWaterForceResult> = Object.freeze({
+  forceX: 0, forceY: 0, forceZ: 0,
+  buoyancy: 0, drag: 0, flow: 0, turbulence: 0, submergedRatio: 0,
+});
+
+const finite32 = (v: number): boolean => Number.isFinite(Math.fround(v));
+
+/**
+ * Finite or refused (ABI 18), forces.cpp's rule: a sample with a non-finite
+ * input, a non-finite config scalar, or a result that is not finite at
+ * float32 (what the native output holds) is refused — the zero force of a
+ * body out of the water. `waterForceRefusedFallback` says which.
+ */
+export function waterForceRefusedFallback(
+  sample: NativeWaterForceSample,
+  config: NativeWaterForceConfig,
+  result: NativeWaterForceResult = calculateUncheckedFallback(sample, config),
+): boolean {
+  const inputs = [
+    sample.position.x, sample.position.y, sample.position.z,
+    sample.velocity.x, sample.velocity.y, sample.velocity.z,
+    sample.flowDirection.x, sample.flowDirection.z,
+    config.flowSpeed, config.waterLevel, config.raftMass, config.raftVolume, config.dragCoefficient,
+    config.frontalArea, config.sideArea, config.timeSeconds, config.turbulenceStrength, config.turbulenceFrequency,
+  ];
+  if (!inputs.every(finite32)) return true;
+  return ![
+    result.forceX, result.forceY, result.forceZ, result.buoyancy,
+    result.drag, result.flow, result.turbulence, result.submergedRatio,
+  ].every(finite32);
+}
+
 export function calculateWaterForceFallback(
+  sample: NativeWaterForceSample,
+  config: NativeWaterForceConfig,
+): NativeWaterForceResult {
+  const result = calculateUncheckedFallback(sample, config);
+  return waterForceRefusedFallback(sample, config, result) ? { ...ZERO_FORCE } : result;
+}
+
+function calculateUncheckedFallback(
   sample: NativeWaterForceSample,
   config: NativeWaterForceConfig,
 ): NativeWaterForceResult {
   const raftHeight = 0.35;
   const bottomY = sample.position.y - raftHeight * 0.5;
   const submergedRatio = Math.min(1, Math.max(0, (config.waterLevel - bottomY) / raftHeight));
-  if (submergedRatio <= 0) {
-    return {
-      forceX: 0, forceY: 0, forceZ: 0,
-      buoyancy: 0, drag: 0, flow: 0, turbulence: 0, submergedRatio: 0,
-    };
-  }
+  if (submergedRatio <= 0) return { ...ZERO_FORCE };
 
   const buoyancy = buoyancyFallback(config.raftVolume * submergedRatio);
   const forceY = Math.max(0, buoyancy - config.raftMass * 9.80665 * 0.35);

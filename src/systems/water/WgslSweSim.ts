@@ -55,6 +55,7 @@ import sweWgslSource from './swe.wgsl?raw';
 import type { SweEventCall, SweSim, SweStepInput } from './sweSim';
 import { SWE_REST_INFLOW, scrollField, scrollTexels, type SweInflow } from './sweScroll';
 import { SWE_FLOW_CHANNELS } from './sweSurfaceField';
+import { sanitizeBed } from './sweBedGuard';
 
 const WORKGROUP = 64;
 /** Matches MAX_EVENTS / EventBlock in swe.wgsl. */
@@ -441,7 +442,9 @@ export async function createWgslSweSim(
       device.queue.writeBuffer(field, 0, mirror);
     },
     commitBed() {
+      const repaired = sanitizeBed(b);
       device.queue.writeBuffer(field, 3 * count * 4, b);
+      return repaired;
     },
     addSurface(index, amount) {
       // One NaN here would spread through η (#533): drop it at the door.

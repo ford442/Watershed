@@ -12,9 +12,9 @@
  */
 
 import type { NativeWaterForceResult, WatershedNativeModule } from '../../systems/water/wasmAbi';
-import { calculateWaterForceFallback } from '../../systems/water/waterForceFallback';
+import { calculateWaterForceFallback, waterForceRefusedFallback } from '../../systems/water/waterForceFallback';
 import { createWaterForceBatch } from '../../systems/water/WatershedWasm';
-import { WATER_FORCE_FIXTURES } from './waterForceFixtures';
+import { WATER_FORCE_FIXTURES, WATER_FORCE_REFUSED_FIXTURES } from './waterForceFixtures';
 import { loadNativeFromDisk, nativePairOnDisk } from '../../testing/nativeFromDisk';
 
 /** Committed TS-fallback results, rounded to 4dp. Regenerate deliberately. */
@@ -109,6 +109,22 @@ describe('water-force fixtures — TypeScript fallback', () => {
   });
 });
 
+describe('water-force refusal (ABI 18) — TypeScript fallback', () => {
+  WATER_FORCE_REFUSED_FIXTURES.forEach((fixture) => {
+    it(`refuses, as zeros: ${fixture.name}`, () => {
+      expect(waterForceRefusedFallback(fixture.sample, fixture.config)).toBe(true);
+      const actual = calculateWaterForceFallback(fixture.sample, fixture.config);
+      for (const key of RESULT_KEYS) expect(actual[key], key).toBe(0);
+    });
+  });
+
+  it('refuses none of the ordinary fixtures', () => {
+    for (const fixture of WATER_FORCE_FIXTURES) {
+      expect(waterForceRefusedFallback(fixture.sample, fixture.config), fixture.name).toBe(false);
+    }
+  });
+});
+
 // The native module is only present after `pnpm build:wasm`, so this block is
 // opt-in via WATERSHED_WASM_INTEGRATION=1. Load from disk (file:// + instantiateWasm)
 // the same way emscripten/smoke_test.mjs does — getWasm() uses the Vite public URL
@@ -125,8 +141,47 @@ describeNative('water-force parity — native C++ vs TypeScript', () => {
   });
 
   it('exposes the expected ABI version', () => {
-    // ABI 6 = nonlinear SWE + bed pointer. Older binaries cannot be called.
-    expect(wasm.getVersion()).toBeGreaterThanOrEqual(6);
+    // ABI 18 = finite or refused (the refused-row plane, WS_PARTIAL).
+    expect(wasm.getVersion()).toBeGreaterThanOrEqual(18);
+  });
+
+  it('refuses the same rows as the fallback, as zeros, and keeps the rest of the batch fresh', () => {
+    // Refused fixtures that share the ordinary config, mixed into one batch:
+    // only the poisoned rows are refused, the others match the fallback.
+    const config = WATER_FORCE_FIXTURES[0].config;
+    const rows = [
+      ...WATER_FORCE_FIXTURES.map((f) => ({ sample: f.sample, refused: false })),
+      ...WATER_FORCE_REFUSED_FIXTURES.filter((f) => f.config === config).map((f) => ({ sample: f.sample, refused: true })),
+    ];
+    const batch = createWaterForceBatch(wasm, rows.length);
+    try {
+      rows.forEach((row, i) => batch.setSample(i, row.sample));
+      batch.compute(config);
+      rows.forEach((row, i) => {
+        expect(batch.isRefused(i), `row ${i}`).toBe(row.refused);
+        expect(waterForceRefusedFallback(row.sample, config), `fallback row ${i}`).toBe(row.refused);
+        const native = batch.readResult(i);
+        const fallback = calculateWaterForceFallback(row.sample, config);
+        for (const key of RESULT_KEYS) expectClose(native[key], fallback[key], `row ${i}.${key}`);
+      });
+    } finally {
+      batch.dispose();
+    }
+  });
+
+  it('refuses a non-finite config as a whole call: every row zeros and flagged', () => {
+    for (const fixture of WATER_FORCE_REFUSED_FIXTURES.filter((f) => f.config !== WATER_FORCE_FIXTURES[0].config)) {
+      const one = createWaterForceBatch(wasm, 1);
+      try {
+        one.setSample(0, fixture.sample);
+        one.compute(fixture.config);
+        expect(one.isRefused(0), fixture.name).toBe(true);
+        const native = one.readResult(0);
+        for (const key of RESULT_KEYS) expect(native[key], `${fixture.name}.${key}`).toBe(0);
+      } finally {
+        one.dispose();
+      }
+    }
   });
 
   it('agrees with the TS fallback on every fixture (one-sample batch, its own config)', () => {

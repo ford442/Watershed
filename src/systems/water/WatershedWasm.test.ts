@@ -12,7 +12,7 @@
  *   4. Physics correctness — reference values derived from the C++ formulas.
  */
 
-import { heapF32, PARTICLE_SOA_PLANES, WASM_ABI_VERSION, type WatershedNativeModule } from './wasmAbi';
+import { asPtr, heapF32, PARTICLE_SOA_PLANES, WASM_ABI_VERSION, type F32, type WatershedNativeModule } from './wasmAbi';
 import { getWasm, peekWasm } from './wasmLoader';
 import { buoyancyFallback, calculateBuoyancyAndDragFallback, calculateWaterForceFallback, dragForceFallback } from './waterForceFallback';
 import { createWaterForceBatch, createSWEGrid } from './WatershedWasm';
@@ -30,10 +30,10 @@ describe('WatershedWasm — module exports', () => {
     expect(typeof peekWasm).toBe('function');
   });
 
-  it('describes ABI 17: the sub-cycled step and the int statuses (#533)', () => {
-    // The loader requires exactly this version (no floor since #533);
-    // wasmAbiVersion.drift.test.ts ties it to bindings.cpp.
-    expect(WASM_ABI_VERSION).toBe(17);
+  it('describes ABI 18: finite or refused, one ABI source (#575)', () => {
+    // The loader requires exactly this version (no floor since #533); both the
+    // C++ and the TS number are generated from abi.def (wasmAbi.generated.test.ts).
+    expect(WASM_ABI_VERSION).toBe(18);
   });
 
   it('mirrors C++ PARTICLE_SOA_PLANES (px…scale)', () => {
@@ -243,7 +243,8 @@ function buildMockModule(): WatershedNativeModule {
       return this.allocateGrid(PARTICLE_SOA_PLANES * capacity);
     },
     freeParticleSoA(ptr): void {
-      this.freeGrid(ptr);
+      // The mock's SoA is an allocateGrid block.
+      this.freeGrid(asPtr<F32>(ptr));
     },
     initWaterfallParticles() { return 1; },
     stepWaterfallParticles() { return 1; },

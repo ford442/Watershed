@@ -141,14 +141,27 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
                 poisoned = field();
                 continue;
             }
-            case 2:
-                applySWEEvent(ptr(h), ptr(u), ptr(w), bPtr, width, height, in.orSpecial(dx),
-                              in.scalar(-50.f, 50.f), in.scalar(-50.f, 50.f), in.orSpecial(H), in.pick(0, 4),
-                              in.scalar(-60.f, 60.f), in.scalar(-60.f, 60.f), in.scalar(0.f, 20.f),
-                              in.scalar(0.f, 3.f), in.scalar(0.f, 0.1f));
+            case 2: {
+                // One draw in four a scalar is huge but finite (#575): a shared
+                // river's radius of 3e38 overflowed r*r under WS_OK before ABI 18.
+                const auto huge = [&](float v) { return in.u32() % 4u == 0 ? in.range(-1.f, 1.f) * 3e38f : v; };
+                const float radius = huge(in.scalar(0.f, 20.f));
+                const float strength = huge(in.scalar(0.f, 3.f));
+                const float dt = huge(in.scalar(0.f, 0.1f));
+                const int status = applySWEEvent(ptr(h), ptr(u), ptr(w), bPtr, width, height, in.orSpecial(dx),
+                                                 huge(in.scalar(-50.f, 50.f)), huge(in.scalar(-50.f, 50.f)),
+                                                 huge(in.orSpecial(H)), in.pick(0, 4), huge(in.scalar(-60.f, 60.f)),
+                                                 huge(in.scalar(-60.f, 60.f)), radius, strength, dt);
+                const bool pastMax = std::isfinite(radius) && std::isfinite(strength) && std::isfinite(dt)
+                    && (radius > SWE_EVENT_MAX_RADIUS || strength > SWE_EVENT_MAX_STRENGTH || dt > SWE_EVENT_MAX_DT);
+                if (pastMax && status == WS_OK) {
+                    std::fprintf(stderr, "op %d: applySWEEvent past its maxima returned WS_OK\n", op);
+                    std::abort();
+                }
                 break;
+            }
             default:
-                scrollShallowWater(ptr(h), ptr(u), ptr(w), bPtr, width, height,
+                (void)scrollShallowWater(ptr(h), ptr(u), ptr(w), bPtr, width, height,
                                    in.pick(-2 * width, 2 * width), in.pick(-2 * height, 2 * height),
                                    in.scalar(-H, H), in.scalar(-2.f, 2.f), in.scalar(-2.f, 2.f));
                 break;

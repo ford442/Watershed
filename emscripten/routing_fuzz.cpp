@@ -73,20 +73,20 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
         widths[k] = value(0.5f, 80.f);
     }
     const float q = value(0.f, 200.f);
-    routeReachSteady(ptr(lengths), ptr(slopes), ptr(widths), nSeg, q, ptr(storage), ptr(outflow));
+    (void)routeReachSteady(ptr(lengths), ptr(slopes), ptr(widths), nSeg, q, ptr(storage), ptr(outflow));
     std::vector<float> lateral(n);
     for (size_t k = 0; k < n; ++k) lateral[k] = in.coin() ? value(0.f, 50.f) : 0.f;
     const int steps = in.pick(1, 8);
     for (int s = 0; s < steps; ++s) {
         if (in.coin()) {
-            routeReach(ptr(lengths), ptr(slopes), ptr(widths), nSeg, value(0.f, 400.f), value(0.01f, 30.f),
+            (void)routeReach(ptr(lengths), ptr(slopes), ptr(widths), nSeg, value(0.f, 400.f), value(0.01f, 30.f),
                        ptr(storage), ptr(outflow));
         } else {
-            routeReachLateral(ptr(lengths), ptr(slopes), ptr(widths), nSeg, value(0.f, 400.f), ptr(lateral),
+            (void)routeReachLateral(ptr(lengths), ptr(slopes), ptr(widths), nSeg, value(0.f, 400.f), ptr(lateral),
                               value(0.01f, 30.f), ptr(storage), ptr(outflow));
         }
     }
-    routeReachTravelTime(ptr(lengths), ptr(slopes), ptr(widths), nSeg, q, ptr(lag));
+    (void)routeReachTravelTime(ptr(lengths), ptr(slopes), ptr(widths), nSeg, q, ptr(lag));
     const RoutedEdge edge = routedEdgeState(value(0.f, 400.f), value(0.f, 400.f), value(0.2f, 3.f), value(1.f, 20.f));
     if (kind != Kind::Raw) {
         require(std::isfinite(edge.eta) && std::isfinite(edge.speed), "routedEdgeState is non-finite");

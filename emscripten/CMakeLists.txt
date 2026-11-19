@@ -20,6 +20,26 @@ set(COMPUTE_SOURCES
 add_library(watershed_compute STATIC ${COMPUTE_SOURCES})
 target_include_directories(watershed_compute PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 
+# One ABI source (#575): abi.def declares every export; scripts/gen-abi.mjs
+# generates abi_generated.h (these wrappers and constants), the TS table and
+# the WASM.md reference from it. --check runs before anything compiles, on
+# every build of either branch, and fails when a generated file drifted or an
+# implementation header's prototype disagrees with abi.def (types, names,
+# order): a parameter swap anywhere is a red native build. Node is on every
+# machine that builds this (pnpm); without it the check is skipped loudly.
+find_program(WATERSHED_NODE node)
+if(WATERSHED_NODE)
+    add_custom_target(abi_check ALL
+        COMMAND "${WATERSHED_NODE}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/gen-abi.mjs" --check
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/.."
+        COMMENT "gen-abi --check: abi.def vs headers and generated files"
+        VERBATIM
+    )
+    add_dependencies(watershed_compute abi_check)
+else()
+    message(WARNING "node not found: skipping gen-abi --check (abi.def vs the headers). Install Node to build with the ABI check.")
+endif()
+
 # One warning set for both branches (#559 B): the wasm32 build is the one that
 # ships, and it is where size_t is 32-bit (the #520 overflow class), so it is
 # held to at least the host's bar. -Wdouble-promotion / -Wimplicit-float-

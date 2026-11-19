@@ -813,6 +813,9 @@ int applySWEEvent(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t bPtr
         || !std::isfinite(cx) || !std::isfinite(cz) || !std::isfinite(radius)) return WS_REJECTED;
     // std::max(0.f, x) below drops a NaN but keeps +inf, which then lands in h.
     if (!std::isfinite(strength) || !std::isfinite(dt)) return WS_REJECTED;
+    // Finite but past the authored range (ABI 18): r*r, dz*dz and mag*step
+    // overflowed to inf below, under WS_OK.
+    if (radius > SWE_EVENT_MAX_RADIUS || strength > SWE_EVENT_MAX_STRENGTH || dt > SWE_EVENT_MAX_DT) return WS_BAD_ARG;
     const std::span<float> h = heapPlane(hPtr, width, height);
     const std::span<float> u = heapPlane(uPtr, width, height);
     const std::span<float> w = heapPlane(wPtr, width, height);

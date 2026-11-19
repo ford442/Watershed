@@ -6,6 +6,8 @@
  * Rapier already sample. This is not a sixth decoration type.
  */
 
+import { SWE_EVENT_MAX_RADIUS, SWE_EVENT_MAX_STRENGTH } from './wasmAbi.generated';
+
 export const HYDRO_EVENT_KINDS = ['inflowPulse', 'vortex', 'braid', 'roughness', 'surge'] as const;
 export type HydroEventKind = (typeof HYDRO_EVENT_KINDS)[number];
 
@@ -178,6 +180,22 @@ function fnv1aHex(input: string): string {
   return (hash >>> 0).toString(16).padStart(8, '0');
 }
 
+/**
+ * The authored range of an event's radius (m) and strength (#575): the same
+ * numbers as level.schema.json's hydroEvents and the native applySWEEvent
+ * maxima (abi.def SWE_EVENT_MAX_*, pinned by hydroEventRange.drift.test.ts),
+ * so a shared river is refused here, at load, never in the solver.
+ */
+export const HYDRO_EVENT_RADIUS_RANGE = { min: 0.5, max: SWE_EVENT_MAX_RADIUS } as const;
+export const HYDRO_EVENT_STRENGTH_RANGE = { min: 0, max: SWE_EVENT_MAX_STRENGTH } as const;
+
+const inRange = (v: number, r: { readonly min: number; readonly max: number }): boolean =>
+  Number.isFinite(v) && v >= r.min && v <= r.max;
+
+/**
+ * Authored events, dropping any the solver would refuse: a non-numeric or
+ * out-of-range radius / strength (#575) as well as a bad id, kind or segment.
+ */
 export function parseHydroEvents(raw: unknown): HydroEvent[] {
   if (!Array.isArray(raw)) return [];
   const out: HydroEvent[] = [];
@@ -187,6 +205,8 @@ export function parseHydroEvents(raw: unknown): HydroEvent[] {
     if (typeof rec.id !== 'string' || rec.id.length === 0) continue;
     if (!isHydroEventKind(rec.kind)) continue;
     if (typeof rec.segmentIndex !== 'number' || rec.segmentIndex < 0) continue;
+    if (rec.radius !== undefined && (typeof rec.radius !== 'number' || !inRange(rec.radius, HYDRO_EVENT_RADIUS_RANGE))) continue;
+    if (rec.strength !== undefined && (typeof rec.strength !== 'number' || !inRange(rec.strength, HYDRO_EVENT_STRENGTH_RANGE))) continue;
     const hours = Array.isArray(rec.hours)
       ? rec.hours.filter((h): h is number => typeof h === 'number' && h >= 0 && h <= 23)
       : undefined;

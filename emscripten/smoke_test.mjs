@@ -51,7 +51,9 @@ const outPtr = raw._ws_allocateGrid(8);
 const OUT_READERS = {
   routedEdgeState: (f, i) => ({ eta: f[i], speed: f[i + 1] }),
 };
-const U32_RESULTS = new Set(['initWaterfallParticles', 'stepWaterfallParticles']);
+// ABI 18: the waterfall exports return a status and write the seed through a
+// trailing out-pointer; this binding hands back the seed (0 on a refusal).
+const SEED_OUT = new Set(['initWaterfallParticles', 'stepWaterfallParticles']);
 const wasm = new Proxy(raw, {
   get(target, name) {
     if (typeof name !== 'string' || name.startsWith('HEAP')) return target[name];
@@ -63,7 +65,9 @@ const wasm = new Proxy(raw, {
         return OUT_READERS[name](target.HEAPF32, outPtr >>> 2);
       };
     }
-    if (U32_RESULTS.has(name)) return (...args) => fn(...args) >>> 0;
+    if (SEED_OUT.has(name)) {
+      return (...args) => (fn(...args, outPtr) === 1 ? target.HEAP32[outPtr >>> 2] >>> 0 : 0);
+    }
     return fn;
   },
 });
@@ -73,7 +77,10 @@ const wasm = new Proxy(raw, {
 const forceIn = wasm.allocateGrid(8);
 const forceOut = wasm.allocateGrid(8);
 wasm.HEAPF32.set([0, 0.2, -10, 0.2, 0, -1.4, 0, -1], forceIn >> 2);
-wasm.computeWaterForcesBatch(forceIn, forceOut, 1, 4.5, 0.5, 150, 1.2, 0.47, 1.05, 0.7, 12.5, 0, 2.4);
+// ABI 18: the third argument is the refused-row plane (0 = none).
+if (wasm.computeWaterForcesBatch(forceIn, forceOut, 0, 1, 4.5, 0.5, 150, 1.2, 0.47, 1.05, 0.7, 12.5, 0, 2.4) !== 1) {
+  throw new Error('computeWaterForcesBatch did not return WS_OK for the fixture');
+}
 const force = wasm.HEAPF32.subarray(forceOut >> 2, (forceOut >> 2) + 8);
 for (const [i, want, label] of [[1, 11253.1309, 'forceY'], [3, 11767.98, 'buoyancy'], [7, 1, 'submergedRatio']]) {
   if (!(Math.abs(force[i] - want) <= Math.max(Math.abs(want) * 1e-3, 1e-4))) {
@@ -87,10 +94,11 @@ wasm.freeGrid(forceOut);
 const version = wasm.getVersion();
 // ABI 12 is the plain C ABI (#467), 13 adds the terrain tile (#487), 14
 // lateral routing inflow + the surge event, 15 drops the single-body force
-// exports and 16 the terrain tile (TS-only since); the TypeScript binding
+// exports and 16 the terrain tile (TS-only since), 18 is finite or refused;
+// the TypeScript binding
 // table requires every export, so this floor is what catches a stale pair.
-if (!Number.isInteger(version) || version < 16) {
-  throw new Error(`Unexpected getVersion(): ${version} (need ABI >= 16)`);
+if (!Number.isInteger(version) || version < 18) {
+  throw new Error(`Unexpected getVersion(): ${version} (need ABI >= 18)`);
 }
 for (const gone of ['calculateBuoyancyAndDrag', 'calculateWaterForce', 'computeBuoyancy', 'computeDragForce', 'computeFlowForce',
   'buildTerrainTile', 'buildWallShell']) {
