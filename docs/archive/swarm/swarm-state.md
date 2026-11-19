@@ -1,5 +1,66 @@
 # Swarm state — atomic deploy + build identity (#416)
 
+## #556 C — 2026-11-19 — green, PR open
+
+**Objective:** headless pilots that drive the runner through a whole map with no browser (#556 C, runner only): `Pilot` / `centreline` / `ghost` / `runUntil`, the page's static obstacle colliders behind an option, and campaign tests that prove maps finishable.
+
+### The segment-18 wipeout (B.2's open question), investigated first
+Hold-forward never touches the canyon. The scripted meander runs on `x = 0.0` for the whole 84 s while the centreline wanders to `x = +529` by segment 18; the runner is in the air from the first second, falling at a constant **−8.1 m/s** (the browser's trace has the same fall: y −6.2 → −190.5 over 1360 frames, positions bit-exact), 130–260 m above a floor that drops faster than that. It never collides with anything, which is why only the first 24 s are pinned and why segments simply count by z.
+- **Why −8.1 m/s:** VehicleTuner's `inWater` is `pos.y < WATER_LEVEL + threshold` on the *absolute* y (0.5), so a runner anywhere below the spawn is "in water": damping lerps to `linearDampingWater` (2.2) and terminal velocity under gravity −20 is ~9. A page quirk (same family as CLAUDE.md's "never check an absolute world Y"), reproduced because the pin needs it.
+- **Why the wipeout at 84 s:** `lifecycleFrame`'s OOB check. At frame 5023 the runner crosses z −1598 into segment 19; that segment's ceiling is `max(pathYMax19, pathYMax18) + POSITION_SANE.yMax` = −951 + 250 = **−701** and the runner is at −698 (it had been under the 250 m ceiling of segments 15–18, which are higher up their own slopes). `isWipeout` flips, the body is respawned at segment 15's checkpoint `(352.8, −768, −1375)`. Cause: `above-envelope`. Not a collider, not the treadmill.
+- Consequence for a pilot: it has to stay near the floor, i.e. steer on the centreline *and* not out-run its own fall. A pilot at run speed does the same thing hold-forward does: it clears segments 0–28 airborne and dies above segment 30's ceiling after the second waterfall (segment 29). `airSpeed` (below) is the fix.
+
+### What it takes to finish (measured)
+- **Launch hour.** The default (6) floods segments 0..6 and **washes out 7..12** (`openFloor`: no collider, a 600 m gap): not finishable on foot by any pilot (the first pilot run fell through segment 7). The tests run a clear day at launch hour 18, `temperature 0`, `snowpackIndex 0.3` (`Normal` throughout).
+- **Steering is the yaw.** Runner movement is camera-relative and the hub's axes are digital (`> AXIS_PRESSED`), so the pilot holds `moveY = 1` and sets the camera yaw toward the aim point through `look()`.
+- **Line.** Without the in-air rule a 14 m lookahead reaches segment 29 and dies above segment 30's ceiling (above). With the rule (`airSpeed 5`) and 14 m the pilot cuts the bend at the segment 18/19 seam, wedges on the bank (speed 0.4 m/s for 4 minutes, a jump tap then drops it through the seam: below-envelope); a 9 m lookahead with a faster in-air line finishes. Defaults are `lookahead 9`, `airSpeed 8`, `airLookahead 8`, `dropAbove 4`, sprint latch 0.5 / 0.08, `stuckFrames 45` → JUMP taps. Sweep on meander (clear day): lookahead 6 → finished 21660 frames, 6 + airSpeed 8 → 20460, 9 + airSpeed 8 → **20340**, 9 + airSpeed 5 → wipeout (below-envelope, seg 17).
+
+### Files changed
+| File | Change |
+|---|---|
+| `src/sim/headless/pilots/pilot.ts` | new: `PilotView` / `PilotCommand` / `PilotPolicy`, `createPilot` (an `InputSource` id `scripted` + `look()`), `yawToward` |
+| `src/sim/headless/pilots/centreline.ts` | new: pure pursuit on the `FRAME_SAMPLES` polyline keyed `frame.index * 32 + j` (survives treadmill recycling), stamina-latched sprint, airborne line, stuck jump |
+| `src/sim/headless/pilots/ghost.ts` | new: `ghostPilot(file)` = `replayPlanFromFile` + `scriptedHeadlessInput` (returns the plan too: the run must be created from it) |
+| `src/sim/headless/pilots/runUntil.ts` | new: 60-frame batches; stops on `run.finish` / wipeout / `until` / `maxFrames`; the wipeout is observed at the frame it flips (store subscription), with position, envelope and cause |
+| `src/sim/headless/pilots/pilots.campaign.test.ts` | new: ghost = B pin; centreline finishes meander (colliders off / on), hydro, delta; glacial, lumber `it.todo` with reasons; colliders default off |
+| `src/sim/headless/segmentWorld.ts`, `createHeadlessRun.ts` | `ObstacleWorld` + `HeadlessRunOptions.obstacleColliders` (default off), `run.obstacles` |
+| `scripts/strict-buffers.json` | + the four pilot files |
+| `docs/reference/TESTING.md`, `SYSTEMS.md` | pilots, the obstacle option, what is still not mounted |
+
+### Deviation from the brief: which colliders
+The brief says to mount placement colliders (rocks, pillars, trestle) from `buildSegmentPlacements`. On the page those do not exist: TrackManager renders every `TrackSegment` with `usePooledStaticObstacles`, so `Rock` gets `transforms={[]}` for `placement.rocks` (the crumbling pillars are rocks with `crumbling`, so they go too). The rocks and logs a runner hits are the 16-slot `ObstaclePool` (`PooledObstacles.tsx`: one fixed body + cuboid per slot, friction 0.9 / 0.65, restitution 0.05). `ObstacleWorld` mounts that, with the page's own pool class. Mounting `buildSegmentPlacements` rocks would add colliders the page does not have, so a headless pilot would be tested against a harder world than a player. Pillars and the lumber trestle are **not** mounted (lumber is not finished anyway, below).
+
+### Maps (clear day, launch hour 18, `centrelinePilot` defaults, colliders on and off give the same numbers)
+| Map | Result |
+|---|---|
+| meander | **finished**, segment 38, 20340 frames (340 sim s) |
+| hydro | **finished**, segment 15, 6780 frames |
+| delta | **finished**, segment 21, 12900 frames |
+| glacial | wipeout, frame 3904, segment 10, `above-envelope`: y −462 vs the authored ceiling −476 (`safeZone.yMax` 150 on segments 3–11): the airborne lag, narrower margin than the meander's 250 |
+| lumber | wipeout, frame 22189, segment 37, `below-envelope`: 80 m under the segment's lowest centreline point; not investigated (the open-floor waterfall at segment 10 is crossed) |
+
+The colliders-on meander is **identical** to colliders-off (20340 frames, finish step 20337): the pilot stays on the centreline and the pool puts rocks 1–5 m off the bank line; nothing is touched. That is a result, not a test of the colliders: `obstacleColliders` is only checked to mount (15 bodies at the start).
+
+### Checks
+| Check | Result |
+|---|---|
+| typecheck (guards + knip) / typecheck:test / lint `--max-warnings 0` | green |
+| `pnpm test` | 2395 passed, 35 skipped |
+| `pnpm test:campaign` | 16 passed + 2 todo (~16 s); the B pin (`headless.campaign.test.ts`, 5 tests) `===`, untouched |
+| `pnpm build` + `check-build-manifest --chunks --budget` | see the PR (no app file changed; `src/sim/headless/` is not reachable from the entry) |
+
+### Not done / BLOCKED
+- **glacial, lumber** not finished (above). The centreline pilot has no gap logic (`openFloor` / `launchShelf` via `SegmentFrame.gapT`: it never needs to jump on the three finished maps) and no speed model for a `safeZone` tighter than the default.
+- **`riskyLine`** (wall-ride, vortex, `openFloor` tags) — not started; needs the placement-style colliders the page does not have, so it waits on what D / #553 want to measure.
+- **Raft pilot** — raft step still a `useFrame` (owner decision on VehicleTuner).
+- Crumbling pillars and the lumber trestle colliders.
+- The meander's default day (launch hour 6) has no finishing line for a pilot: 7..12 are open floor. Whether the page intends a 600 m gap on the default forecast is a design question for #553, not for this harness.
+
+### Next
+D: `RunReport` reads what is there: `RunResult` (splits, wipeout with cause), `SplitRecorder` checksums, `ctx.game` / `getActiveSurvivalState()` per step (stamina, wetness, chill), `getRecordedHazardLog`, `run.water.lastFlow`; its header carries the page quirks (`spareSlotsDropBedZero`) and the launch hour / conditions the run used (the finish depends on them).
+
+---
+
 ## #556 B.3 — 2026-11-12 — green, PR open
 
 **Objective:** the `campaign` vitest project + `pnpm test:campaign` (landed with B.1: the tests need it to run at all) and its own CI job, the docs, and the save-state for what comes next.

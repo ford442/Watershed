@@ -15,9 +15,10 @@
  * change to those derivations there must be made here too (the campaign
  * pin — headless.campaign.test.ts — fails when they drift).
  *
- * Not mounted here: decorations, pooled obstacles and their colliders, pillars,
- * water meshes. A run through the authored centreline touches none of them; a
- * pilot that drives into a rock will not collide with it headless.
+ * Static obstacles (`ObstacleWorld`, below) mount the colliders the page has for rocks
+ * and logs, behind `HeadlessRunOptions.obstacleColliders` (default off, so the B pin —
+ * which touches none — is unchanged). Not mounted here: decorations, crumbling pillars,
+ * the lumber trestle, water meshes. Why these and not `placement.rocks`: see ObstacleWorld.
  */
 import type RAPIER from '@dimforge/rapier3d-compat';
 import { buildChannelProfile } from '../../components/TrackSegment/channelProfile';
@@ -43,6 +44,8 @@ import {
   registerSegmentErosion,
   unregisterSegmentErosion,
 } from '../../systems/water/erosionField';
+import * as THREE from 'three';
+import { createObstaclePool, type ObstaclePool, type SegmentObstacleSource } from '../../systems/pools/ObstaclePool';
 import { resolveSegmentFriction, resolveSegmentRestitution } from '../../systems/survival/surfaceFriction';
 
 type Rapier = typeof RAPIER;
@@ -225,4 +228,72 @@ function boundsCenter(positions: Float32Array): { x: number; z: number } {
     maxZ = Math.max(maxZ, positions[i + 2]);
   }
   return { x: (minX + maxX) / 2, z: (minZ + maxZ) / 2 };
+}
+
+
+/**
+ * The page's static obstacle colliders, as plain calls (#556 C).
+ *
+ * TrackManager renders every TrackSegment with `usePooledStaticObstacles`, so the segment's
+ * `placement.rocks` are passed to `<Rock>` as `[]`: they have neither a mesh nor a collider on
+ * the page, and neither do the crumbling pillars among them. The rocks and logs a runner can
+ * actually hit are the 16-slot `ObstaclePool` (`PooledObstacles.tsx`): per active slot one fixed
+ * body with one cuboid collider (the slot's half extents, friction 0.9 rock / 0.65 log,
+ * restitution 0.05), re-synced whenever the treadmill's active set changes. This is that, with
+ * the same pool class — so mounting `buildSegmentPlacements`' rocks here would put colliders in
+ * the headless world that the page does not have.
+ */
+export class ObstacleWorld {
+  private readonly pool: ObstaclePool = createObstaclePool(16);
+  private readonly bodies: Array<{ body: RAPIER.RigidBody; key: string } | null> = [];
+
+  constructor(
+    private readonly world: RAPIER.World,
+    private readonly rapier: Rapier,
+  ) {}
+
+  /** Re-derive the pool from the live segments and bring the bodies up to date. */
+  sync(segments: ReadonlyArray<SegmentObstacleSource>): void {
+    const slots = this.pool.syncSegments([...segments]);
+    const quat = new THREE.Quaternion();
+    slots.forEach((slot, index) => {
+      const mounted = this.bodies[index] ?? null;
+      if (!slot.active) {
+        if (mounted) {
+          this.world.removeRigidBody(mounted.body);
+          this.bodies[index] = null;
+        }
+        return;
+      }
+      const he = slot.colliderHalfExtents;
+      // The collider's size is fixed at mount; a slot reused for another obstacle gets a new one (r3rapier remounts on new args).
+      const shape = `${slot.type}:${he.x}:${he.y}:${he.z}`;
+      if (mounted && mounted.key !== shape) {
+        this.world.removeRigidBody(mounted.body);
+        this.bodies[index] = null;
+      }
+      let entry = this.bodies[index] ?? null;
+      if (!entry) {
+        const body = this.world.createRigidBody(this.rapier.RigidBodyDesc.fixed());
+        const collider = this.world.createCollider(this.rapier.ColliderDesc.cuboid(he.x, he.y, he.z), body);
+        collider.setFriction(slot.type === 'log' ? 0.65 : 0.9);
+        collider.setRestitution(0.05);
+        entry = { body, key: shape };
+        this.bodies[index] = entry;
+      }
+      quat.setFromEuler(slot.rotation);
+      entry.body.setTranslation({ x: slot.position.x, y: slot.position.y, z: slot.position.z }, true);
+      entry.body.setRotation({ x: quat.x, y: quat.y, z: quat.z, w: quat.w }, true);
+    });
+  }
+
+  /** Obstacle bodies currently in the world. */
+  count(): number {
+    return this.bodies.filter(Boolean).length;
+  }
+
+  dispose(): void {
+    for (const entry of this.bodies) if (entry) this.world.removeRigidBody(entry.body);
+    this.bodies.length = 0;
+  }
 }

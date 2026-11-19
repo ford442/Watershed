@@ -207,8 +207,25 @@ reproduces one page bug on purpose (no SWE bed under segment 0: the pool's spare
 `segmentId` to 0 and unregister it; `pageQuirks.spareSlotsDropBedZero`); the test shows what the run reads
 without it.
 
-What the harness does not do: mount decorations, pooled obstacles or pillars (their colliders), and the
-raft is not on it (its step is still a `useFrame`). Pilots, run reports and baselines (#556 C–E) are later.
+**Pilots (#556 C, `src/sim/headless/pilots/`).** A pilot is a `HeadlessInput` that reads the run and
+drives it, so a map can be proven finishable and a tuning change has a ruler:
+
+- `centrelinePilot(run, options)`: pure pursuit on the live segments' sampled centreline (aim point
+  `lookahead` m ahead, yaw is the steering because runner movement is camera-relative), sprint (RB) latched
+  on stamina, a slower line while it is more than `dropAbove` m above the floor (the runner falls at ~8 m/s
+  and a steep reach drops faster), JUMP when wedged. `ghostPilot(file)` is a `.wsghost` as a script.
+- `runUntil(run, pilot, { maxFrames, until })` steps 60-frame batches and stops on the map's end, a wipeout,
+  `until` or the cap. `RunResult`: `stop`, `frames`, `finished`, `wipeout` (frame, segment, position, the
+  vertical envelope and whether the body was above / below it) and the recorded `splits`.
+- `obstacleColliders: true` mounts the page's pooled rocks and logs (cuboids; `ObstacleWorld`). Default off.
+
+`pilots/pilots.campaign.test.ts`: the ghost pilot reproduces the B pin through `runUntil`; the centreline
+pilot finishes meander (colliders off and on), hydro and delta on a clear day at launch hour 18 (the default
+launch hour floods / washes out the meander, which no pilot crosses); glacial and lumber are `it.todo` with
+the measured reason. About 15 s of wall time.
+
+What the harness does not do: mount decorations, crumbling pillars or the lumber trestle, and the
+raft is not on it (its step is still a `useFrame`). Run reports and baselines (#556 D–E) are later.
 
 ### Visual Regression Testing
 
