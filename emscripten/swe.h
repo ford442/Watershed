@@ -150,6 +150,21 @@ void reserveShallowWaterScratch(int width, int height);
 // SWE_MAX_GRID_EXTENT (the largest width / height any entry point accepts)
 // lives in common.h since #511: chores.cpp guards against it too.
 
+#ifdef WATERSHED_SWE_DIAGNOSTICS
+/**
+ * Host builds only, never the wasm (#575 D): the largest depth (m) the step's
+ * max(0, d) clamp added to one cell since the last call — mass the HLL update
+ * would have taken below zero, created instead. Reading it resets it.
+ */
+float sweTakeLargestDepthClamp();
+/**
+ * Host builds only (#575 D): the total depth (m, summed over cells and steps)
+ * the dry pin discarded since the last call — a cell left with depth in
+ * (0, SWE_DRY_DEPTH] is written back exactly dry. Reading it resets it.
+ */
+double sweTakeDryCutDepth();
+#endif
+
 /** Depth below which a cell counts as dry (m). Mirrored by host goldens. */
 extern const float SWE_DRY_DEPTH;
 

@@ -543,6 +543,17 @@ inline float finiteOrZero(float v) { return std::isfinite(v) ? v : 0.f; }
  */
 constexpr int kMaxSubsteps = 4;
 
+#ifdef WATERSHED_SWE_DIAGNOSTICS
+/** Host-only (#575 D): the largest depth the max(0, d) clamp has added since the last reset. */
+float g_largestDepthClamp = 0.f;
+inline void noteDepthClamp(float negDepth) {
+    if (negDepth > g_largestDepthClamp) g_largestDepthClamp = negDepth;
+}
+/** Host-only (#575 D): total depth (m, summed over cells) the dry pin has zeroed since the last reset. */
+double g_dryCutDepth = 0.0;
+inline void noteDryCut(float depth) { g_dryCutDepth += static_cast<double>(depth); }
+#endif
+
 /**
  * One CFL-clamped step of at most `dt` (validated by the caller). Returns the
  * time it integrated: min(dt, C·dx / maxWaveSpeed), or all of `dt` when the
@@ -690,7 +701,17 @@ float stepOnce(Scratch& s, std::span<float> h, std::span<float> u, std::span<flo
             const f32x4 accQz = gather(xFaces.trans, xFaces.trans, zBelow.momR, zAbove.momL);
 
             const f32x4 vb = f32x4_load(&b[c]);
-            const f32x4 depth = f32x4_max(vZero, f32x4_add(f32x4_load(&d[c]), accD));
+            const f32x4 rawDepth = f32x4_add(f32x4_load(&d[c]), accD);
+            const f32x4 depth = f32x4_max(vZero, rawDepth);
+#ifdef WATERSHED_SWE_DIAGNOSTICS
+            noteDepthClamp(f32x4_hmax(f32x4_sub(vZero, rawDepth)));
+            {
+                // The film the dry pin discards: depth in (0, SWE_DRY_DEPTH].
+                alignas(16) float cut[4];
+                f32x4_store(cut, f32x4_and(depth, f32x4_le(depth, vDry)));
+                noteDryCut(cut[0] + cut[1] + cut[2] + cut[3]);
+            }
+#endif
             const f32x4 dry = f32x4_le(depth, vDry);
             const f32x4 nqx = f32x4_add(f32x4_load(&qx[c]), accQx);
             const f32x4 nqz = f32x4_add(f32x4_load(&qz[c]), accQz);
@@ -719,6 +740,10 @@ float stepOnce(Scratch& s, std::span<float> h, std::span<float> u, std::span<flo
             const float accQx = gather(xFaces.momR, xFaces.momL, zBelow.trans, zAbove.trans);
             const float accQz = gather(xFaces.trans, xFaces.trans, zBelow.momR, zAbove.momL);
             const float depth = std::max(0.f, d[c] + accD);
+#ifdef WATERSHED_SWE_DIAGNOSTICS
+            noteDepthClamp(-(d[c] + accD));
+            if (depth <= SWE_DRY_DEPTH) noteDryCut(depth);
+#endif
             if (depth <= SWE_DRY_DEPTH) {
                 h[c] = b[c] - H;
                 u[c] = 0.f * damp;
@@ -978,6 +1003,20 @@ int scrollShallowWater(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t
     }
     return WS_OK;
 }
+
+#ifdef WATERSHED_SWE_DIAGNOSTICS
+float sweTakeLargestDepthClamp() {
+    const float largest = g_largestDepthClamp;
+    g_largestDepthClamp = 0.f;
+    return largest;
+}
+
+double sweTakeDryCutDepth() {
+    const double cut = g_dryCutDepth;
+    g_dryCutDepth = 0.0;
+    return cut;
+}
+#endif
 
 void reserveShallowWaterScratch(int width, int height) {
     if (width <= 0 || height <= 0) return;

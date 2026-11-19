@@ -73,6 +73,58 @@ void checkClose(float actual, float expected, float relEps, const char* label) {
     }
 }
 
+/**
+ * Dry-front mass drift (#575 D). The CFL scan bounds the step by |v| + c
+ * while an HLL dry front runs at |v| + 2c (swe.cpp hllFlux), and the update's
+ * max(0, d) clamp creates whatever mass a face flux would have taken below
+ * zero. This measures both on two closed basins — a rim of dry bank all round,
+ * so the transmissive edges carry nothing out and any volume change is mass
+ * the clamp created (plus float rounding): a dam break onto a dry bed, and a
+ * basin sloshing up and down a beach. 10,000 steps of 1/60 s each.
+ */
+struct DryFrontDrift {
+    double drift = 0.0;        // (V_end − V_0) / V_0
+    double worstDrift = 0.0;   // max |V_t − V_0| / V_0 over the run
+    float largestClamp = 0.f;  // largest depth one clamp added to one cell (m)
+    double dryCut = 0.0;       // volume the dry pin discarded, / V_0
+};
+
+template <typename Bed, typename Eta>
+DryFrontDrift dryFrontRun(int W, int Z, float dx, float H, float dt, Bed bed, Eta eta) {
+    const auto n = static_cast<std::size_t>(W) * static_cast<std::size_t>(Z);
+    std::vector<float> h(n), u(n, 0.f), w(n, 0.f), b(n);
+    for (int z = 0; z < Z; ++z) {
+        for (int x = 0; x < W; ++x) {
+            const std::size_t i =
+                static_cast<std::size_t>(z) * static_cast<std::size_t>(W) + static_cast<std::size_t>(x);
+            const bool rim = x < 2 || z < 2 || x >= W - 2 || z >= Z - 2;
+            b[i] = rim ? H + 2.f : bed(x);
+            // η where the surface stands above the bed, else the dry pin (b − H).
+            h[i] = std::max(eta(x), b[i] - H);
+        }
+    }
+    const auto volume = [&]() {
+        double v = 0.0;
+        for (std::size_t i = 0; i < n; ++i) v += static_cast<double>(std::max(0.f, H + h[i] - b[i]));
+        return v * static_cast<double>(dx) * static_cast<double>(dx);
+    };
+    const auto P = [](std::vector<float>& v) { return reinterpret_cast<uintptr_t>(v.data()); };
+    reserveShallowWaterScratch(W, Z);
+    (void)sweTakeLargestDepthClamp();
+    (void)sweTakeDryCutDepth();
+    const double v0 = volume();
+    DryFrontDrift r;
+    for (int step = 0; step < 10000; ++step) {
+        const float done = stepShallowWater(P(h), P(u), P(w), P(b), W, Z, dt, 9.80665f, dx, H);
+        check(done == dt, "dry-front probe: every step integrates its whole dt");
+        r.worstDrift = std::max(r.worstDrift, std::abs(volume() - v0) / v0);
+    }
+    r.drift = (volume() - v0) / v0;
+    r.largestClamp = sweTakeLargestDepthClamp();
+    r.dryCut = sweTakeDryCutDepth() * static_cast<double>(dx) * static_cast<double>(dx) / v0;
+    return r;
+}
+
 }  // namespace
 
 int main() {
@@ -1131,6 +1183,45 @@ int main() {
         check(std::all_of(planes.begin(), planes.end(), [](float x) { return std::isfinite(x); }),
               "particles: NaN / inf scalars never reach the SoA");
         freeParticleSoA(soa);
+    }
+
+    // ------------------------------------------------------------------
+    // Dry-front mass drift (#575 D), measured and pinned.
+    // ------------------------------------------------------------------
+    {
+        constexpr int kFrontW = 80;
+        constexpr int kFrontZ = 24;
+        constexpr float kFrontDx = 0.5f;
+        constexpr float kFrontH = 1.f;
+        const auto flat = [](int) { return 0.5f; };
+        // Dam break: 0.8 m of water over the left quarter of a flat bed at 0.5 m, the rest dry.
+        const auto dam = [](int x) { return x < 20 ? 0.3f : -10.f; };
+        // Beach: the bed rises 0.2 -> 1.4 m left to right (dry past the still line), and the
+        // surface starts tilted ±0.15 m, so the shoreline runs up and down the beach.
+        const auto beachBed = [](int x) { return 0.2f + 1.2f * static_cast<float>(x) / static_cast<float>(kFrontW); };
+        const auto tilt = [](int x) { return 0.15f * std::cos(3.14159265f * static_cast<float>(x) / 56.f); };
+        // dt 1/60 s is the game's regime (the CFL limit, ~0.07 s here, never binds); 0.2 s
+        // sub-cycles at the Courant limit every step, where a dry front's |v| + 2c makes
+        // the scan's C = 0.4 an effective 0.8.
+        struct Case {
+            const char* name;
+            DryFrontDrift r;
+        };
+        const Case cases[] = {
+            {"dam break, dt 1/60", dryFrontRun(kFrontW, kFrontZ, kFrontDx, kFrontH, 1.f / 60.f, flat, dam)},
+            {"beach, dt 1/60", dryFrontRun(kFrontW, kFrontZ, kFrontDx, kFrontH, 1.f / 60.f, beachBed, tilt)},
+            {"dam break, CFL-bound", dryFrontRun(kFrontW, kFrontZ, kFrontDx, kFrontH, 0.2f, flat, dam)},
+            {"beach, CFL-bound", dryFrontRun(kFrontW, kFrontZ, kFrontDx, kFrontH, 0.2f, beachBed, tilt)},
+        };
+        for (const Case& c : cases) {
+            std::printf("dry-front %-21s 10000 steps: drift %+.3e (worst %.3e), dry pin %.3e, largest clamp %.3e m\n",
+                        c.name, c.r.drift, c.r.worstDrift, c.r.dryCut, static_cast<double>(c.r.largestClamp));
+            // The clamp creates nothing: the HLL update never drives a depth below zero.
+            check(c.r.largestClamp == 0.f, "dry-front: the max(0, d) clamp never fires (WASM.md, #575 D)");
+            // What is lost is the film the dry pin zeroes, and nothing else (rounding aside).
+            check(std::abs(c.r.drift + c.r.dryCut) < 1e-4, "dry-front: the volume drift is the dry pin's film");
+            check(c.r.worstDrift < 2e-3, "dry-front: under 0.2 % of the volume over 10000 steps (WASM.md)");
+        }
     }
 
     // ------------------------------------------------------------------

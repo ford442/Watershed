@@ -643,6 +643,36 @@ CFL-clamped. Four sub-steps cover the TS caller's 0.05 s cap down to a 0.0125 s 
   counted (`sweBedRepairCount()`, and `repairedCells` in the HUD bed snapshot).
 - `stepShallowWaterInflow` (ABI 10, below) has the same contract.
 
+#### Dry fronts, measured (#575 D)
+
+The CFL scan bounds a sub-step by `|v| + √(g d)` per cell while an HLL dry front runs at
+`|v| + 2√(g d)` (`hllFlux`), so the 0.4 Courant number is an effective 0.8 there, and the update
+clamps a new depth at `max(0, d)`, which would create whatever mass a face flux took below zero.
+The question was whether that clamp leaks mass. `host_smoke.cpp` measures it on two closed basins
+(a rim of dry bank all round, so the transmissive edges carry nothing out and every volume
+change is the scheme's), 80 × 24 cells at `dx` 0.5 m, `H` 1 m, 10,000 steps each, with two
+host-only probes compiled into the host library only (`WATERSHED_SWE_DIAGNOSTICS`; the wasm is
+byte-identical without them): the largest depth the clamp ever added, and the film the dry pin
+zeroes (a cell left with depth in (0, `SWE_DRY_DEPTH`] is written back exactly dry).
+
+| Case | Volume drift | Dry-pin film | Largest clamp |
+|------|-------------:|-------------:|--------------:|
+| Dam break onto a dry bed, `dt` 1/60 s (the CFL limit, ~0.07 s, never binds) | −0.139 % (worst −0.142 %) | 0.141 % | 0 |
+| Basin sloshing on a beach, `dt` 1/60 s | −0.093 % | 0.094 % | 0 |
+| Dam break, `dt` 0.2 s (every sub-step at the Courant limit) | −0.036 % | 0.036 % | 0 |
+| Beach, `dt` 0.2 s | −0.006 % | 0.006 % | 0 |
+
+So: **the clamp never fires** — the hydrostatically reconstructed HLL update keeps every depth
+non-negative at these Courant numbers, dry fronts included — and the CFL scan does not need
+`|v| + 2c`: doubling the celerity term changed none of the numbers above (at 1/60 s the limit
+never binds; at the limit there was nothing to clamp). What drift there is is **mass lost, not
+created**, and all of it is the dry pin's film (drift + film < 1e-4 in every case). In the
+game's regime that is 0.14 % over 10,000 steps of a dam break — just above the 0.1 % line this
+investigation set — and under 0.1 % for a beach. The probe pins all three facts (no clamp, the
+drift is the film, under 0.2 %) on every `pnpm test:native`. Conserving the film (keep its depth,
+zero its momentum) would move `swe_goldens.h`, the digest and the WGSL twin, so it is left as a
+decision, not folded into this measurement.
+
 Use the `createSWEGrid()` helper to manage allocations:
 
 ```typescript

@@ -262,6 +262,9 @@ else()
     add_executable(watershed_host_smoke host_smoke.cpp)
     target_link_libraries(watershed_host_smoke PRIVATE watershed_compute)
     target_compile_options(watershed_compute PRIVATE -O2 -ffp-contract=off ${WATERSHED_HOST_LANG})
+    # Host-only instrumentation (#575 D): the dry-front clamp probe in host_smoke.
+    # It records, never writes the field: the digest is unchanged with it on.
+    target_compile_definitions(watershed_compute PUBLIC WATERSHED_SWE_DIAGNOSTICS=1)
     target_compile_options(watershed_host_smoke PRIVATE -O2 -ffp-contract=off ${WATERSHED_HOST_LANG} ${WATERSHED_WARNINGS})
 
     # #467: the C ABI trusts JS for every pointer and width * height. Host-only
