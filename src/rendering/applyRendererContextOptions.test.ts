@@ -21,6 +21,11 @@ function fakeRenderer(): FakeRenderer {
   };
 }
 
+/** A shadowless context — no preset derives one since #574 E.2, but the mechanism still handles it. */
+function shadowless() {
+  return { ...deriveRendererContextOptions('high'), shadowMode: 'off' as const, shadowMapSize: null };
+}
+
 /** Minimal stand-in for the scene walk — one mesh, one material. */
 function sceneWithMaterials(count: number) {
   const materials = Array.from({ length: count }, () => ({ needsUpdate: false }));
@@ -44,9 +49,18 @@ describe('applyRendererContextOptions', () => {
     expect(getRendererShadowMapSize(renderer)).toBe(2048);
   });
 
-  it('disables shadows for low', () => {
+  it('keeps PCF shadows on for low, at the smallest map (#574 E.2)', () => {
     const renderer = fakeRenderer();
     applyRendererContextOptions(renderer, deriveRendererContextOptions('low'));
+
+    expect(renderer.shadowMap.enabled).toBe(true);
+    expect(renderer.shadowMap.type).toBe(THREE.PCFShadowMap);
+    expect(getRendererShadowMapSize(renderer)).toBe(512);
+  });
+
+  it('disables shadows for a shadowless context', () => {
+    const renderer = fakeRenderer();
+    applyRendererContextOptions(renderer, shadowless());
 
     expect(renderer.shadowMap.enabled).toBe(false);
     expect(getRendererShadowMapSize(renderer)).toBeNull();
@@ -54,9 +68,27 @@ describe('applyRendererContextOptions', () => {
 });
 
 describe('applyRendererQualityUpdate — live quality without a Canvas remount', () => {
-  it('recompiles materials when the shadow filter changes (medium → high)', () => {
+  it('marks no material for any preset change — one shadow type on every tier (#574 E.2)', () => {
+    const presets = ['low', 'medium', 'high', 'ultra'] as const;
+    for (const from of presets) {
+      for (const to of presets) {
+        const renderer = fakeRenderer();
+        applyRendererContextOptions(renderer, deriveRendererContextOptions(from, { devicePixelRatio: 2 }));
+        const scene = sceneWithMaterials(2);
+        const result = applyRendererQualityUpdate(
+          renderer,
+          deriveRendererContextOptions(to, { devicePixelRatio: 2 }),
+          scene
+        );
+        expect(result.shadowConfigChanged).toBe(false);
+        expect(scene.materials.some((m) => m.needsUpdate)).toBe(false);
+      }
+    }
+  });
+
+  it('recompiles when shadows are switched on (shadowless → high)', () => {
     const renderer = fakeRenderer();
-    applyRendererContextOptions(renderer, deriveRendererContextOptions('medium'));
+    applyRendererContextOptions(renderer, shadowless());
     const scene = sceneWithMaterials(3);
 
     const result = applyRendererQualityUpdate(
@@ -65,25 +97,21 @@ describe('applyRendererQualityUpdate — live quality without a Canvas remount',
       scene
     );
 
-    // three bakes SHADOWMAP_TYPE_* into each program and does not list the
-    // shadow map type in needsProgramChange, so without this the old program
-    // keeps rendering with basic shadows.
+    // three bakes USE_SHADOWMAP / SHADOWMAP_TYPE_* into each program and does
+    // not list them in needsProgramChange, so without this the old program
+    // keeps rendering without shadows.
     expect(result.shadowConfigChanged).toBe(true);
     expect(renderer.shadowMap.type).toBe(THREE.PCFShadowMap);
     expect(renderer.shadowMap.needsUpdate).toBe(true);
     expect(scene.materials.every((m) => m.needsUpdate)).toBe(true);
   });
 
-  it('recompiles when shadows are switched off entirely (high → low)', () => {
+  it('recompiles when shadows are switched off entirely (high → shadowless)', () => {
     const renderer = fakeRenderer();
     applyRendererContextOptions(renderer, deriveRendererContextOptions('high'));
     const scene = sceneWithMaterials(2);
 
-    const result = applyRendererQualityUpdate(
-      renderer,
-      deriveRendererContextOptions('low'),
-      scene
-    );
+    const result = applyRendererQualityUpdate(renderer, shadowless(), scene);
 
     expect(result.shadowConfigChanged).toBe(true);
     expect(renderer.shadowMap.enabled).toBe(false);
@@ -129,7 +157,7 @@ describe('applyRendererQualityUpdate — live quality without a Canvas remount',
 
   it('tolerates a scene with array materials and material-less objects', () => {
     const renderer = fakeRenderer();
-    applyRendererContextOptions(renderer, deriveRendererContextOptions('medium'));
+    applyRendererContextOptions(renderer, shadowless());
     const multi = [{ needsUpdate: false }, { needsUpdate: false }];
     const scene = {
       traverse(callback: (object: unknown) => void) {

@@ -10,8 +10,15 @@ import {
 
 export { SHARED_CONTEXT_ATTRIBUTES };
 
-/** Shadow mode mapped to R3F Canvas `shadows` prop and THREE.ShadowMapType. */
-export type ShadowMode = 'off' | 'basic' | 'soft';
+/**
+ * Shadow mode mapped to R3F Canvas `shadows` prop and THREE.ShadowMapType.
+ *
+ * Every game preset derives `soft` (PCF) since #574 E.2 — tiers differ by map
+ * size only, so a preset change never flips `SHADOWMAP_TYPE_*` or
+ * `USE_SHADOWMAP` and never recompiles a lit program. `off` stays in the type
+ * for surfaces that are not a preset (tests, a future shadowless view).
+ */
+export type ShadowMode = 'off' | 'soft';
 
 export interface RendererContextSettings {
   /** Browser `window.devicePixelRatio`; inject in tests. Defaults to 1. */
@@ -142,6 +149,9 @@ export const DESYNCHRONIZED_ENABLED = false;
  */
 export const ULTRA_DPR_CEILING = 2.0;
 
+/** `low`'s shadow map edge, in texels — the smallest tier, not an off switch. */
+export const LOW_SHADOW_MAP_SIZE = 512;
+
 /**
  * Pure quality → WebGL context options. No React or DOM side effects.
  *
@@ -186,17 +196,20 @@ export function deriveRendererContextOptions(
 
   switch (quality) {
     case 'low':
+      // Shadows stay on at a small map (#574 E.2): turning them off would
+      // change `USE_SHADOWMAP` in every lit program, i.e. recompile the scene
+      // on the frame the preset moved. A 512 map is a cheap depth pass.
       return {
         ...base,
         dprMax: scaled(1.0),
-        shadowMode: 'off',
-        shadowMapSize: null,
+        shadowMode: 'soft',
+        shadowMapSize: LOW_SHADOW_MAP_SIZE,
       };
     case 'medium':
       return {
         ...base,
         dprMax: scaled(1.25),
-        shadowMode: 'basic',
+        shadowMode: 'soft',
         shadowMapSize: 1024,
       };
     case 'high':
@@ -234,17 +247,17 @@ export function deriveRendererContextOptions(
  * anything compiled outside `render()` (the boot shader warm-up) saw a type the
  * frame never uses, so its programs never matched. The image is unchanged —
  * three was already drawing PCF.
+ *
+ * There is one type (#574 E.2): `BasicShadowMap` was `medium`'s, and a
+ * High ↔ Medium step linked 21–24 programs in one frame (RENDERER.md).
  */
-export function shadowMapTypeFor(mode: Exclude<ShadowMode, 'off'>): THREE.ShadowMapType {
-  return mode === 'soft' ? THREE.PCFShadowMap : THREE.BasicShadowMap;
+export function shadowMapTypeFor(_mode: Exclude<ShadowMode, 'off'>): THREE.ShadowMapType {
+  return THREE.PCFShadowMap;
 }
 
 /** R3F Canvas `shadows` prop value from derived shadow mode (`'percentage'` = PCF, see `shadowMapTypeFor`). */
-export function shadowModeToCanvasProp(
-  mode: ShadowMode
-): false | 'basic' | 'percentage' {
-  if (mode === 'off') return false;
-  return mode === 'soft' ? 'percentage' : 'basic';
+export function shadowModeToCanvasProp(mode: ShadowMode): false | 'percentage' {
+  return mode === 'off' ? false : 'percentage';
 }
 
 /**

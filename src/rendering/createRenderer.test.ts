@@ -498,14 +498,15 @@ describe('createGameRenderer', () => {
     renderer.dispose();
   });
 
-  it('disables shadow maps for low quality context options', async () => {
+  it('keeps PCF shadow maps on for low quality, at the smallest size (#574 E.2)', async () => {
     const contextOptions = deriveRendererContextOptions('low');
     const renderer = await createGameRenderer(canvasProps, {
       preference: 'webgl',
       contextOptions,
     });
-    expect(renderer.shadowMap.enabled).toBe(false);
-    expect(getRendererShadowMapSize(renderer)).toBeNull();
+    expect(renderer.shadowMap.enabled).toBe(true);
+    expect(renderer.shadowMap.type).toBe(THREE.PCFShadowMap);
+    expect(getRendererShadowMapSize(renderer)).toBe(512);
     renderer.dispose();
   });
 });

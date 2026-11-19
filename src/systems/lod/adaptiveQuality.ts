@@ -13,7 +13,7 @@ export type AdaptiveQualityLevel = QualityPreset;
  * `low` is excluded by design, not by constraint. Since boot-time graphics
  * negotiation (#405) every preset shares one `rendererContextCreationKey()`, so
  * auto-stepping into `low` no longer remounts the Canvas or tears down Rapier.
- * What remains is that `low` turns shadows off and drops DPR to 1.0 — a change
+ * What remains is that `low` drops DPR to 1.0 and the shadow map to 512 — a change
  * of *look*, which the game should not choose for the player during a rough
  * patch. The render scale (#419 phase C) is the valve that does get to move
  * automatically, because it trades sharpness rather than lighting.
