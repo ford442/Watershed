@@ -6,7 +6,7 @@
  * per-step values, the impulse tally the debug overlay reads, the vectors the
  * movement math fills, and the argument objects handed to the helpers (their
  * signatures take one object; passing a fresh literal every step was most of
- * the step's garbage). `RunnerPhysicsStep.ts` is the only writer.
+ * the step's garbage). `RunnerPhysicsStep.ts` and its stages (`runnerStep/`) are the only writers.
  */
 import * as THREE from 'three';
 import { queryFlags } from '../../../config/queryFlags';

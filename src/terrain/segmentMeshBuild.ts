@@ -39,7 +39,7 @@ import {
   type Vec3,
 } from './meshMath';
 import { clamp, smoothstep } from '../math/scalar';
-import type { SegmentPlacementInput } from './placement';
+import type { SegmentPlacementInput } from './placement/inputs';
 
 /** What the builders need of a path — THREE.CatmullRomCurve3 and meshMath's CatmullRomPath both are one. */
 export interface SegmentPath {

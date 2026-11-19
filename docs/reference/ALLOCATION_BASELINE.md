@@ -262,6 +262,11 @@ test.
 | After (2026-10-28) | ≤ 17 |
 | After the envelope lookup fix (2026-11-04) | **0** (budget: < 2; the window shows a fixed 4,344 B of measurement overhead — 0.87 B/step at N = 5,000, 0.22 at N = 20,000) |
 
+#559 C moved each stage into its own module under
+`src/vehicles/RunnerVehicle/hooks/runnerStep/` (the stage list stays in
+`RunnerPhysicsStep.ts`); each reused argument object moved with the stage that
+fills it, and the test's budget still holds.
+
 What went, in order of size:
 
 - A `Map`, two closures and ~10 argument / impulse literals per step → the

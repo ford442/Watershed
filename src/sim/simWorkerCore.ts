@@ -44,7 +44,8 @@ import {
   contextFromSpec,
   segmentMeshTransferables,
 } from '../terrain/segmentMeshBuild';
-import { buildSegmentPlacements, placementTransferables } from '../terrain/placement';
+import { buildSegmentPlacements } from '../terrain/placement';
+import { placementTransferables } from '../terrain/placement/format';
 
 /** Particle SoA plane order (emscripten/particles.h). */
 const PARTICLE_PLANE_SCALE = 8;
