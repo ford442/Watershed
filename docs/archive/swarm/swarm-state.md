@@ -1014,3 +1014,28 @@ Recorded run and both replays agree.
 `tickRunSurvival`'s dead vehicle arguments (Phase A note) were already gone on main.
 
 **Checks:** typecheck (+ guards, knip) ✅ · typecheck:test ✅ · lint 0 err / 19 warn ✅ · test 1964 passed ✅ · test:perf 4 passed (0.87 B/step both cases) ✅ · build + `check-build-manifest --chunks --budget` ✅ (entry 738 kB) · input-smoke, gamepad, replay-smoke **identical** to the ruler (splits 11400/15400/19500/23500, SWE `60d32732 7b3a2e41 b3a6136c 61bede48`).
+
+## [2026-11-25 18:24] #577 A.4 — blocked
+
+**Files touched:** `docs/archive/swarm/swarm-state.md` only.
+
+**What was done:** Inspected the main-branch headless run lifecycle and shared state.
+`createHeadlessRun` resets the singleton `simCore`, run session, segment frames,
+bathymetry, erosion, recorders and game store; `stepHeadless` reads the singleton
+input hub, `simCore` and game store. A second run therefore cannot be interleaved
+with the first without isolating those dependencies.
+
+**Measurements:** No frames, hashes or timings measured; no simulation code changed.
+Main inspected at `68cf455`. `pnpm` is not installed in this environment, so the
+requested validation sequence was not run.
+
+**Blockers:** A.4 explicitly requires run-scoped ownership of `runSession.ts` and
+the sim-side singletons, but the permitted paths exclude `src/systems/journey/`,
+`src/systems/weather/`, `src/systems/water/`, `src/systems/GameState.ts`, and
+other affected consumers. A context confined to the permitted paths cannot make
+the existing singleton readers run-scoped. B follows A in the issue's required
+order; C and D follow B, and E follows D. No later independent phase was identified.
+
+**Next step:** Obtain approval to extend the permitted paths for A.4 and its
+dependent consumers, then implement run isolation and verify two different maps
+interleaved against their solo runs before proceeding to B.
