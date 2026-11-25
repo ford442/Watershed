@@ -75,8 +75,11 @@ const SECONDS = Math.max(5, Number(process.env.PERF_TRACE_SECONDS ?? '30'));
 const RUNS = Math.max(1, Number(process.env.PERF_TRACE_RUNS ?? '3'));
 const UPDATE = process.env.UPDATE_PERF_BASELINE === '1';
 const LIVE_MS = Math.max(0, Number(process.env.PERF_TRACE_LIVE_MS ?? '30000'));
-const LIVE_QUERY = 'map=meander&cleanTest=1&renderer=webgl&screenshot=1&vehicle=raft&trace=1';
+const LIVE_QUERY =
+  'map=meander&cleanTest=1&renderer=webgl&screenshot=1&renderScaleSweep=1&vehicle=raft&trace=1';
 const LIVE_TRACKS = ['main', 'sim worker', 'rapier worker'];
+const RENDER_SCALE_SWEEP = [1, 0.5, 1];
+const RENDER_SCALE_HOLD_MS = Math.max(500, Number(process.env.PERF_TRACE_SCALE_HOLD_MS ?? '1500'));
 const SUITE = 'meander';
 const FRAMES_PER_SECOND = 60;
 const MAX_ALIGN_ERROR_MS = 1;
@@ -143,12 +146,66 @@ export function spanDurations(trace, fromUs = -Infinity) {
   return out;
 }
 
-export function metricsOf(durations) {
+export function metricsOf(durations, counters = new Map()) {
   const metrics = {};
-  for (const [key, list] of [...durations].sort(([a], [b]) => a.localeCompare(b))) {
+  const rows = new Map([...durations, ...counters]);
+  for (const [key, list] of [...rows].sort(([a], [b]) => a.localeCompare(b))) {
     metrics[key] = { n: list.length, p50: round(quantile(list, 0.5)), p95: round(quantile(list, 0.95)) };
   }
   return metrics;
+}
+
+function counterValues(trace, fromUs = -Infinity, toUs = Infinity) {
+  const counters = new Map();
+  for (const event of trace.traceEvents) {
+    if (event.ph !== 'C' || event.ts < fromUs || event.ts > toUs) continue;
+    const key = `main/${event.name}`;
+    if (!counters.has(key)) counters.set(key, []);
+    counters.get(key).push(Number(event.args?.value));
+  }
+  return counters;
+}
+
+function counterSamples(trace, name, fromUs, toUs = Infinity) {
+  return trace.traceEvents
+    .filter((event) => event.ph === 'C' && event.name === name && event.ts >= fromUs && event.ts <= toUs)
+    .map((event) => ({ at: event.ts, value: Number(event.args?.value) }));
+}
+
+function renderScaleSweepMetrics(trace, fromUs, toUs, dimensions) {
+  const frames = trace.traceEvents
+    .filter((event) => event.ph === 'X' && event.name === 'frame' && event.ts >= fromUs && event.ts <= toUs)
+    .map((event) => event.dur / 1000);
+  const textures = counterSamples(trace, 'renderer textures', fromUs, toUs).map((sample) => sample.value);
+  const pixelRatios = counterSamples(trace, 'renderer pixel ratio', fromUs, toUs).map((sample) => sample.value);
+  const firstBound = counterSamples(trace, 'render targets first bound', fromUs, toUs).map((sample) => sample.value);
+  const resizes = counterSamples(trace, 'render target resizes', fromUs, toUs).map((sample) => sample.value);
+  return {
+    dimensions,
+    frameMs: {
+      n: frames.length,
+      p95: round(quantile(frames, 0.95)),
+      worst: round(Math.max(...frames)),
+    },
+    textures: {
+      first: textures[0] ?? null,
+      last: textures.at(-1) ?? null,
+      max: textures.length ? Math.max(...textures) : null,
+    },
+    pixelRatio: {
+      first: pixelRatios[0] ?? null,
+      last: pixelRatios.at(-1) ?? null,
+      values: [...new Set(pixelRatios)],
+    },
+    renderTargetsFirstBound: {
+      first: firstBound[0] ?? null,
+      last: firstBound.at(-1) ?? null,
+    },
+    renderTargetResizes: {
+      first: resizes[0] ?? null,
+      last: resizes.at(-1) ?? null,
+    },
+  };
 }
 
 /** Every worker track against the offset its thread's timeOrigin gives; returns failures. */
@@ -198,9 +255,37 @@ async function liveRun() {
     console.log(`\n[live] ${BASE_URL}/?${LIVE_QUERY} for ${LIVE_MS / 1000} s`);
     await page.goto(`${BASE_URL}/?${LIVE_QUERY}`, { waitUntil: 'domcontentloaded', timeout: 60_000 });
     await clickStart(page);
-    await sleep(LIVE_MS);
+    await page.waitForFunction(
+      () =>
+        typeof window.__watershedScreenshot?.setRenderScale === 'function' &&
+        typeof window.__watershedScreenshot?.getRenderScale === 'function',
+      { timeout: 60_000 },
+    );
+    await sleep(Math.min(10_000, LIVE_MS));
+    const sweepStartUs = (await page.evaluate(() => performance.now())) * 1000;
+    const dimensions = [];
+    for (const scale of RENDER_SCALE_SWEEP) {
+      await page.evaluate((value) => window.__watershedScreenshot.setRenderScale(value), scale);
+      await sleep(RENDER_SCALE_HOLD_MS);
+      dimensions.push(
+        await page.evaluate((value) => {
+          const canvas = document.querySelector('canvas');
+          const context = canvas?.getContext('webgl2') ?? canvas?.getContext('webgl');
+          return {
+            scale: value,
+            actualScale: window.__watershedScreenshot.getRenderScale(),
+            width: context?.drawingBufferWidth ?? null,
+            height: context?.drawingBufferHeight ?? null,
+          };
+        }, scale),
+      );
+    }
+    await sleep(
+      Math.max(0, LIVE_MS - Math.min(10_000, LIVE_MS) - RENDER_SCALE_SWEEP.length * RENDER_SCALE_HOLD_MS),
+    );
     const trace = JSON.parse(await page.evaluate(async () => JSON.stringify(await window.__watershed.trace.stop())));
-    return { ok: true, trace, pageErrors };
+    const sweepEndUs = (await page.evaluate(() => performance.now())) * 1000;
+    return { ok: true, trace, pageErrors, sweepStartUs, sweepEndUs, dimensions };
   } catch (err) {
     return { ok: false, reason: String(err?.message || err), pageErrors };
   } finally {
@@ -279,7 +364,9 @@ async function main() {
   }
 
   // Smallest p95 / p50 per metric across runs; the smallest calibration likewise.
-  const perRun = runs.map((r) => metricsOf(spanDurations(r.trace, r.fromUs)));
+  const perRun = runs.map((r) =>
+    metricsOf(spanDurations(r.trace, r.fromUs), counterValues(r.trace, r.fromUs)),
+  );
   const metrics = {};
   for (const key of new Set(perRun.flatMap((m) => Object.keys(m)))) {
     const rows = perRun.map((m) => m[key]).filter(Boolean);
@@ -313,12 +400,15 @@ async function main() {
       const threads = live.trace.metadata.threads.map((t) => t.thread);
       const gpu = live.trace.traceEvents.some((e) => e.ph === 'C' && e.name === 'gpu frame ms');
       console.log(`  tracks: ${threads.join(', ')}; GPU counter ${gpu ? 'present' : 'absent (no timer query on this GPU)'}`);
+      const sweep = renderScaleSweepMetrics(live.trace, live.sweepStartUs, live.sweepEndUs, live.dimensions);
+      fs.writeFileSync(path.join(OUT_DIR, 'render-scale-sweep.json'), JSON.stringify(sweep, null, 2));
+      console.log(`  render-scale sweep: ${JSON.stringify(sweep)}`);
       for (const want of LIVE_TRACKS) {
         if (!threads.includes(want)) failures.push(`live phase: no ${want} track (raise PERF_TRACE_LIVE_MS on a slow box)`);
       }
       failures.push(...checkAlignment('live', live.trace));
       console.table(
-        Object.entries(metricsOf(spanDurations(live.trace)))
+        Object.entries(metricsOf(spanDurations(live.trace), counterValues(live.trace)))
           .filter(([key]) => !key.startsWith('main/'))
           .map(([key, m]) => ({ key, ...m })),
       );

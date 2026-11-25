@@ -27,6 +27,11 @@ describe('queryFlags (#521 E)', () => {
     expect(parseQueryFlags('?input=script:/x.json').warmup).toBe(false);
   });
 
+  it('reserves adaptive resolution for an explicitly scripted valve sweep', () => {
+    expect(parseQueryFlags('?renderScaleSweep=1').renderScaleSweep).toBe(true);
+    expect(parseQueryFlags('?renderScaleSweep=0').renderScaleSweep).toBe(false);
+  });
+
   it('returns a frozen object', () => {
     const flags = parseQueryFlags('?map=delta&vehicle=raft');
     expect(Object.isFrozen(flags)).toBe(true);

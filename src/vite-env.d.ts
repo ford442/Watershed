@@ -11,6 +11,10 @@ interface Window {
     advanceTreadmill: () => boolean;
     /** Write the settings quality preset, as the adaptive ladder does (verification/quality_drop_trace.mjs). */
     setQuality: (quality: 'low' | 'medium' | 'high' | 'ultra') => void;
+    /** Set the adaptive render scale for render-scale verification. */
+    setRenderScale: (scale: number) => void;
+    /** Read the actual stored scale during a scripted sweep. */
+    getRenderScale: () => number;
     /** `?input=script:` only: advance n sim frames, render the last (verification/input_script_smoke.mjs). */
     stepScripted: (n: number) => number;
     /** True once the scripted source is loaded and the run is live. */
