@@ -47,6 +47,7 @@ export const WATER_UNIFORM_NAMES = [
   'sweEnabled',
   'reflectionTexture',
   'reflectionStrength',
+  'reflectionScale',
   'vortexCenter',
   'vortexRadius',
   'vortexIntensity',
@@ -127,6 +128,7 @@ export function createWaterUniformValues(init: WaterUniformInit): Record<WaterUn
     sweEnabled: 0,
     reflectionTexture: init.reflectionFallback ?? null,
     reflectionStrength: 0,
+    reflectionScale: 1,
     vortexCenter: init.vortexCenter
       ? new THREE.Vector3().copy(init.vortexCenter)
       : new THREE.Vector3(WATER_FAR_AWAY.x, 0, WATER_FAR_AWAY.z),

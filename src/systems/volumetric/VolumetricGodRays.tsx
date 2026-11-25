@@ -27,6 +27,9 @@ export const GOD_RAYS_FRAGMENT_SHADER = `
   uniform float density;
   uniform float wallOcclusion;
   uniform float time;
+  uniform float renderScale;
+  uniform vec2 depthTexel;
+  uniform vec2 depthUvMax;
   
   varying vec2 vUv;
   
@@ -49,7 +52,9 @@ export const GOD_RAYS_FRAGMENT_SHADER = `
     }
     vec2 direction = normalize(delta);
     
-    float currentDepth = texture2D(tDepth, uv).r;
+    vec2 halfDepthTexel = depthTexel * 0.5;
+    vec2 currentDepthUv = clamp(uv * renderScale, halfDepthTexel, max(halfDepthTexel, depthUvMax));
+    float currentDepth = texture2D(tDepth, currentDepthUv).r;
     float illumination = 0.0;
     float sampleDist = rayLength / float(max(samples, 1));
     vec2 samplePos = uv;
@@ -62,7 +67,8 @@ export const GOD_RAYS_FRAGMENT_SHADER = `
       
       vec4 sceneColor = texture2D(tDiffuse, samplePos);
       float luminance = dot(sceneColor.rgb, vec3(0.299, 0.587, 0.114));
-      float sampleDepth = texture2D(tDepth, samplePos).r;
+      vec2 sampleDepthUv = clamp(samplePos * renderScale, halfDepthTexel, max(halfDepthTexel, depthUvMax));
+      float sampleDepth = texture2D(tDepth, sampleDepthUv).r;
       float mistNoise = noise(samplePos * 8.0 + vec2(time * 0.02, -time * 0.01)) * 0.5 + 0.5;
       
       float depthDelta = abs(sampleDepth - currentDepth);
@@ -96,6 +102,9 @@ export const GOD_RAYS_SHADER = {
     density: { value: 0.96 },
     wallOcclusion: { value: 0.9 },
     time: { value: 0 },
+    renderScale: { value: 1 },
+    depthTexel: { value: new THREE.Vector2(1, 1) },
+    depthUvMax: { value: new THREE.Vector2(1, 1) },
   },
   vertexShader: GOD_RAYS_VERTEX_SHADER,
   fragmentShader: GOD_RAYS_FRAGMENT_SHADER,
@@ -106,4 +115,3 @@ export const getGodRaySunColor = (timeOfDay: number) => {
   const goldenHour = THREE.MathUtils.smoothstep(timeOfDay, 0.65, 0.9);
   return new THREE.Color('#fff6e3').lerp(new THREE.Color('#ffcc88'), goldenHour * 0.8 + (1.0 - midday) * 0.15);
 };
-

@@ -10,9 +10,8 @@
  * `rendererContextCreationKey`), and the rest of the contract is re-applied here
  * on the existing renderer.
  *
- * Since #419 phase C it also carries the adaptive render scale — a 0.5–1.0
- * multiplier on the preset's DPR ceiling, driven by frame time. That is a live
- * knob by construction: it must never reach `rendererContextCreationKey()`.
+ * The adaptive render scale is applied by the post pipeline as a viewport
+ * multiplier; it never changes the Canvas DPR or target allocation.
  *
  * R3F already re-runs its own `configure` for the `dpr` and `shadows` Canvas
  * props, so those land without help. What it does not do is invalidate compiled
@@ -29,15 +28,15 @@ import { deriveRendererContextOptions } from './deriveRendererContextOptions';
 import { getSessionGraphicsEnvelope } from './probeGraphicsCapability';
 import { traceCounter, traceName } from '../debug/trace/traceProbe';
 
-const RENDER_SCALE_COUNTER = traceName('renderer quality sync scale');
 const DPR_CEILING_COUNTER = traceName('renderer DPR ceiling');
+const RENDER_SCALE_COUNTER = traceName('renderer render scale');
 
 export default function RendererQualitySync() {
   const gl = useThree((state) => state.gl);
   const scene = useThree((state) => state.scene);
   const quality = useQualityPreset();
-  // The valve moves with frame time, several times more often than the preset
-  // ever does — and it lands the same way, on the live renderer.
+  // The valve moves with frame time; RendererQualitySync keeps its diagnostics
+  // aligned with the value consumed by the render pipeline.
   const renderScale = useRenderScale();
 
   useEffect(() => {
@@ -48,16 +47,18 @@ export default function RendererQualitySync() {
       // The envelope is frozen at boot; only the live half of the contract
       // below actually varies with `quality`.
       envelope: getSessionGraphicsEnvelope(),
-      renderScale,
     });
 
     // `failIfMajorPerformanceCaveat`, `antialias`, `alpha`, `depth`, `stencil`
     // are creation-time attributes and are deliberately NOT touched here — a
     // preset change that moves any of them changes the Canvas key instead.
     applyRendererQualityUpdate(gl, options, scene);
-    traceCounter(RENDER_SCALE_COUNTER, renderScale);
     traceCounter(DPR_CEILING_COUNTER, options.dprCeiling);
-  }, [gl, quality, renderScale, scene]);
+  }, [gl, quality, scene]);
+
+  useEffect(() => {
+    traceCounter(RENDER_SCALE_COUNTER, renderScale);
+  }, [renderScale]);
 
   return null;
 }

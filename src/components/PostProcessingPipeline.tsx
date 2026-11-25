@@ -14,7 +14,7 @@ import { useLOD } from '../systems/lod/LODManager';
 import { useBiomeId, useBiomeTimeOfDay } from '../systems/biome/BiomeSystem';
 import { useSunPosition } from '../systems/lighting/SunPositionSystem';
 import { GOD_RAYS_SHADER } from '../systems/volumetric/VolumetricGodRays';
-import { useGameStore } from '../systems/GameState';
+import { useGameStore, useRenderScale } from '../systems/GameState';
 import { effectsForLODQuality } from '../systems/settings/settingsDerive';
 import type { VehicleRigidBodyRef } from '../experience/types';
 import type { WebGPURenderer } from 'three/webgpu';
@@ -33,6 +33,7 @@ import { getComfort } from '../systems/settings/comfortRuntime';
 import { smaaPassModule, ssaoPassModule } from './postProcessing/composerPassModules';
 import { tracePass } from './postProcessing/tracePass';
 import { traceEnd, traceName, traceStart } from '../debug/trace/traceProbe';
+import { renderScaleViewport } from '../rendering/renderScaleViewport';
 
 /** `renderer.render` with the post chain, per frame (#559 D); the passes nest inside. */
 const RENDER_SPAN = traceName('render');
@@ -144,6 +145,10 @@ const RAINBOW_SHADER = {
   `,
 };
 
+const _scaledSceneRect = new THREE.Vector4();
+const _previousSceneViewport = new THREE.Vector4();
+const _previousSceneScissor = new THREE.Vector4();
+
 class GodRaysPass extends Pass {
   material: THREE.ShaderMaterial;
 
@@ -151,6 +156,7 @@ class GodRaysPass extends Pass {
 
   /** The scene pass's depth texture this frame (`SceneRenderPass.depthTexture`). */
   private readonly sceneDepth: () => THREE.Texture | null;
+  renderScale = 1;
 
   constructor(sceneDepth: () => THREE.Texture | null) {
     super();
@@ -171,6 +177,14 @@ class GodRaysPass extends Pass {
   render(renderer: THREE.WebGLRenderer, writeBuffer: THREE.WebGLRenderTarget, readBuffer: THREE.WebGLRenderTarget) {
     this.material.uniforms.tDiffuse.value = readBuffer.texture;
     this.material.uniforms.tDepth.value = this.sceneDepth() ?? readBuffer.depthTexture ?? readBuffer.texture;
+    const depthTexel = this.material.uniforms.depthTexel.value as THREE.Vector2;
+    depthTexel.set(1 / readBuffer.width, 1 / readBuffer.height);
+    const depthUvMax = this.material.uniforms.depthUvMax.value as THREE.Vector2;
+    depthUvMax.set(
+      Math.max(0.5, Math.floor(readBuffer.width * this.renderScale) - 0.5) / readBuffer.width,
+      Math.max(0.5, Math.floor(readBuffer.height * this.renderScale) - 0.5) / readBuffer.height,
+    );
+    this.material.uniforms.renderScale.value = this.renderScale;
 
     if (this.renderToScreen) {
       renderer.setRenderTarget(null);
@@ -179,6 +193,62 @@ class GodRaysPass extends Pass {
     }
 
     renderer.setRenderTarget(writeBuffer);
+    if (this.clear) renderer.clear();
+    this.fsQuad.render(renderer);
+  }
+
+  dispose() {
+    this.material.dispose();
+    this.fsQuad.dispose();
+  }
+}
+
+/** Restores the full-resolution image after the scene has rendered at scale. */
+class RenderScaleUpscalePass extends Pass {
+  private readonly material = new THREE.ShaderMaterial({
+    uniforms: {
+      tDiffuse: { value: null },
+      renderScale: { value: 1 },
+      texelSize: { value: new THREE.Vector2(1, 1) },
+      activeUvMax: { value: new THREE.Vector2(1, 1) },
+    },
+    vertexShader: /* glsl */ `
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: /* glsl */ `
+      uniform sampler2D tDiffuse;
+      uniform float renderScale;
+      uniform vec2 texelSize;
+      uniform vec2 activeUvMax;
+      varying vec2 vUv;
+      void main() {
+        vec2 halfTexel = texelSize * 0.5;
+        vec2 maxUv = max(halfTexel, activeUvMax);
+        vec2 uv = clamp(vUv * renderScale, halfTexel, maxUv);
+        gl_FragColor = texture2D(tDiffuse, uv);
+      }
+    `,
+    depthWrite: false,
+    depthTest: false,
+  });
+  private readonly fsQuad = new FullScreenQuad(this.material);
+  renderScale = 1;
+  activeUvMax = new THREE.Vector2(1, 1);
+
+  render(renderer: THREE.WebGLRenderer, writeBuffer: THREE.WebGLRenderTarget, readBuffer: THREE.WebGLRenderTarget) {
+    this.material.uniforms.tDiffuse.value = readBuffer.texture;
+    this.material.uniforms.renderScale.value = this.renderScale;
+    this.material.uniforms.texelSize.value.set(1 / readBuffer.width, 1 / readBuffer.height);
+    this.activeUvMax.set(
+      Math.max(0.5, Math.floor(readBuffer.width * this.renderScale) - 0.5) / readBuffer.width,
+      Math.max(0.5, Math.floor(readBuffer.height * this.renderScale) - 0.5) / readBuffer.height,
+    );
+    this.material.uniforms.activeUvMax.value.copy(this.activeUvMax);
+    renderer.setRenderTarget(this.renderToScreen ? null : writeBuffer);
     if (this.clear) renderer.clear();
     this.fsQuad.render(renderer);
   }
@@ -209,6 +279,7 @@ class SceneRenderPass extends RenderPass {
   samples = 0;
 
   depthTexture: THREE.DepthTexture | null = null;
+  renderScale = 1;
 
   render(
     renderer: THREE.WebGLRenderer,
@@ -222,7 +293,26 @@ class SceneRenderPass extends RenderPass {
       readBuffer.dispose();
     }
     this.depthTexture = readBuffer.depthTexture;
-    super.render(renderer, writeBuffer, readBuffer, deltaTime, maskActive);
+    _previousSceneViewport.copy(readBuffer.viewport);
+    _previousSceneScissor.copy(readBuffer.scissor);
+    const previousScissorTest = readBuffer.scissorTest;
+    const rect = renderScaleViewport(
+      readBuffer.width,
+      readBuffer.height,
+      this.renderScale,
+      _scaledSceneRect,
+      'render-target-pixels',
+    );
+    readBuffer.viewport.set(rect.x, rect.y, rect.width, rect.height);
+    readBuffer.scissor.set(rect.x, rect.y, rect.width, rect.height);
+    readBuffer.scissorTest = true;
+    try {
+      super.render(renderer, writeBuffer, readBuffer, deltaTime, maskActive);
+    } finally {
+      readBuffer.viewport.copy(_previousSceneViewport);
+      readBuffer.scissor.copy(_previousSceneScissor);
+      readBuffer.scissorTest = previousScissorTest;
+    }
     renderer.shadowMap.autoUpdate = false;
   }
 }
@@ -285,6 +375,7 @@ interface PostProcessingPipelineProps {
 /** A post driver: three's output effects on WebGLRenderer, or the node pipeline. */
 export interface PostDriver {
   apply(params: PostFrameParams): void;
+  setRenderScale(scale: number): void;
   render(): void;
   setSize(width: number, height: number, pixelRatio: number): void;
   dispose(): void;
@@ -321,9 +412,8 @@ const installedDriver = new WeakMap<THREE.WebGLRenderer, object>();
  * node RenderPipeline applies via `outputColorTransform` (#466 Phase A). With
  * SMAA the transform moves into the chain ahead of it (`DisplayTransformPass`).
  *
- * The output owns the targets and their size: `renderer.setSize` /
- * `setPixelRatio` (R3F's setDpr, the render-scale valve) resize them and every
- * effect once, so `setSize` here is a no-op.
+ * The output owns the targets and their size: CSS-size / ceiling-DPR changes
+ * resize them and every effect once, so `setSize` here is a no-op.
  */
 export function createComposerDriver(
   gl: THREE.WebGLRenderer,
@@ -334,6 +424,7 @@ export function createComposerDriver(
   tuning: PostTuning,
 ): EffectsDriver {
   const scenePass = new SceneRenderPass(scene, camera);
+  const upscalePass = new RenderScaleUpscalePass();
 
   const resolution = new THREE.Vector2(width, height);
 
@@ -370,7 +461,7 @@ export function createComposerDriver(
   let effectsDirty = true;
   const rebuildEffects = () => {
     effects.length = 0;
-    effects.push(scenePass);
+    effects.push(scenePass, upscalePass);
     if (ssaoPass) effects.push(ssaoPass);
     effects.push(godRaysPass, bloomPass, hueSatPass, chromaticPass, vignettePass, rainbowPass);
     if (smaaPass) effects.push(displayPass, smaaPass);
@@ -474,6 +565,12 @@ export function createComposerDriver(
       displayPass.enabled = smaa;
       scenePass.samples = aa === 'msaa4' ? 4 : 0;
     },
+    setRenderScale(scale) {
+      const renderScale = Number.isFinite(scale) ? Math.min(1, Math.max(0.5, scale)) : 1;
+      scenePass.renderScale = renderScale;
+      upscalePass.renderScale = renderScale;
+      godRaysPass.renderScale = renderScale;
+    },
     render() {
       if (disposed) return;
       if (effectsDirty || installedDriver.get(gl) !== driver) {
@@ -512,6 +609,7 @@ export function createComposerDriver(
       ssaoPass?.dispose();
       smaaPass?.dispose();
       displayPass.dispose();
+      upscalePass.dispose();
       godRaysPass.dispose();
       bloomPass.dispose();
       hueSatPass.dispose();
@@ -553,6 +651,9 @@ export function createNodeDriver(
     apply(p) {
       pipeline.setStructure(nodeStructureFor(p));
       pipeline.update(p);
+    },
+    setRenderScale(scale) {
+      pipeline.setRenderScale(scale);
     },
     render() {
       pipeline.render();
@@ -597,6 +698,7 @@ export function PostProcessingPipeline({
   chromaticMaxOffset = 0.002,
 }: PostProcessingPipelineProps) {
   const { gl, scene, camera, size } = useThree();
+  const renderScale = useRenderScale();
   const { config } = useLOD();
   const timeOfDay = useBiomeTimeOfDay();
   const biomeId = useBiomeId();
@@ -674,10 +776,8 @@ export function PostProcessingPipeline({
     return createComposerDriver(gl, scene, camera, width, height, tuningRef.current);
   }, [gl, scene, camera]);
 
-  // Follow CSS size *and* DPR. `viewport.dpr` is what R3F's setDpr writes —
-  // RendererQualitySync drives it from the render-scale valve (#419) — so a
-  // closing valve now shrinks the composer's targets (scene render, SSAO,
-  // bloom), not just the final blit (#466 Phase B).
+  // Follow CSS size and the stable DPR ceiling. Render scale changes the active
+  // scene viewport and never resizes the renderer-owned post targets.
   const dpr = useThree((s) => s.viewport.dpr);
   useEffect(() => {
     if (!driver) return;
@@ -733,6 +833,7 @@ export function PostProcessingPipeline({
       getComfort(),
     );
 
+    driver.setRenderScale(renderScale);
     driver.apply(params);
     const traced = traceStart();
     driver.render();

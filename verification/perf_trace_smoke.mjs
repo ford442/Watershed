@@ -172,16 +172,17 @@ function counterSamples(trace, name, fromUs, toUs = Infinity) {
     .map((event) => ({ at: event.ts, value: Number(event.args?.value) }));
 }
 
-function renderScaleSweepMetrics(trace, fromUs, toUs, dimensions) {
+function renderScaleSweepMetrics(trace, fromUs, toUs, dimensions, bootDimensions) {
   const frames = trace.traceEvents
     .filter((event) => event.ph === 'X' && event.name === 'frame' && event.ts >= fromUs && event.ts <= toUs)
     .map((event) => event.dur / 1000);
   const textures = counterSamples(trace, 'renderer textures', fromUs, toUs).map((sample) => sample.value);
   const pixelRatios = counterSamples(trace, 'renderer pixel ratio', fromUs, toUs).map((sample) => sample.value);
-  const requestedDprMax = counterSamples(trace, 'renderer requested DPR max', fromUs, toUs).map((sample) => sample.value);
+  const dprCeiling = counterSamples(trace, 'renderer DPR ceiling', fromUs, toUs).map((sample) => sample.value);
   const firstBound = counterSamples(trace, 'render targets first bound', fromUs, toUs).map((sample) => sample.value);
   const resizes = counterSamples(trace, 'render target resizes', fromUs, toUs).map((sample) => sample.value);
   return {
+    bootDimensions,
     dimensions,
     frameMs: {
       n: frames.length,
@@ -198,7 +199,7 @@ function renderScaleSweepMetrics(trace, fromUs, toUs, dimensions) {
       last: pixelRatios.at(-1) ?? null,
       values: [...new Set(pixelRatios)],
     },
-    requestedDprMax: [...new Set(requestedDprMax)],
+    dprCeiling: [...new Set(dprCeiling)],
     renderTargetsFirstBound: {
       first: firstBound[0] ?? null,
       last: firstBound.at(-1) ?? null,
@@ -207,6 +208,20 @@ function renderScaleSweepMetrics(trace, fromUs, toUs, dimensions) {
       first: resizes[0] ?? null,
       last: resizes.at(-1) ?? null,
     },
+    allocationsStable:
+      textures.length > 0 &&
+      firstBound.length > 0 &&
+      resizes.length > 0 &&
+      Math.max(...textures) === textures[0] &&
+      Math.max(...firstBound) === firstBound[0] &&
+      Math.max(...resizes) === resizes[0],
+    drawingBufferStable:
+      bootDimensions.width > 0 &&
+      bootDimensions.height > 0 &&
+      dimensions.length > 0 &&
+      dimensions.every(
+        (entry) => entry.width === bootDimensions.width && entry.height === bootDimensions.height,
+      ),
   };
 }
 
@@ -266,6 +281,14 @@ async function liveRun() {
       { timeout: 60_000 },
     );
     await sleep(Math.min(10_000, LIVE_MS));
+    const bootDimensions = await page.evaluate(() => {
+      const canvas = document.querySelector('canvas');
+      const context = canvas?.getContext('webgl2') ?? canvas?.getContext('webgl');
+      return {
+        width: context?.drawingBufferWidth ?? null,
+        height: context?.drawingBufferHeight ?? null,
+      };
+    });
     const sweepStartUs = (await page.evaluate(() => performance.now())) * 1000;
     const dimensions = [];
     for (const scale of RENDER_SCALE_SWEEP) {
@@ -283,13 +306,19 @@ async function liveRun() {
           };
         }, scale),
       );
+      if (scale === 0.5) {
+        await page.screenshot({
+          path: path.join(OUT_DIR, 'render-scale-0.5.png'),
+          fullPage: false,
+        });
+      }
     }
     await sleep(
       Math.max(0, LIVE_MS - Math.min(10_000, LIVE_MS) - RENDER_SCALE_SWEEP.length * RENDER_SCALE_HOLD_MS),
     );
     const trace = JSON.parse(await page.evaluate(async () => JSON.stringify(await window.__watershed.trace.stop())));
     const sweepEndUs = (await page.evaluate(() => performance.now())) * 1000;
-    return { ok: true, trace, pageErrors, sweepStartUs, sweepEndUs, dimensions };
+    return { ok: true, trace, pageErrors, sweepStartUs, sweepEndUs, bootDimensions, dimensions };
   } catch (err) {
     return { ok: false, reason: String(err?.message || err), pageErrors };
   } finally {
@@ -404,9 +433,17 @@ async function main() {
       const threads = live.trace.metadata.threads.map((t) => t.thread);
       const gpu = live.trace.traceEvents.some((e) => e.ph === 'C' && e.name === 'gpu frame ms');
       console.log(`  tracks: ${threads.join(', ')}; GPU counter ${gpu ? 'present' : 'absent (no timer query on this GPU)'}`);
-      const sweep = renderScaleSweepMetrics(live.trace, live.sweepStartUs, live.sweepEndUs, live.dimensions);
+      const sweep = renderScaleSweepMetrics(
+        live.trace,
+        live.sweepStartUs,
+        live.sweepEndUs,
+        live.dimensions,
+        live.bootDimensions,
+      );
       fs.writeFileSync(path.join(OUT_DIR, 'render-scale-sweep.json'), JSON.stringify(sweep, null, 2));
       console.log(`  render-scale sweep: ${JSON.stringify(sweep)}`);
+      if (!sweep.allocationsStable) failures.push('render-scale sweep: render targets or textures grew after warm-up');
+      if (!sweep.drawingBufferStable) failures.push('render-scale sweep: drawing buffer dimensions changed');
       for (const want of LIVE_TRACKS) {
         if (!threads.includes(want)) failures.push(`live phase: no ${want} track (raise PERF_TRACE_LIVE_MS on a slow box)`);
       }

@@ -299,10 +299,9 @@ export function toContextAttributes(
  * size, all of which apply live. A quality change therefore cannot remount the
  * Canvas, cannot destroy the WebGL context, and cannot re-initialise Rapier.
  *
- * The render scale is absent for the same reason the preset is: it moves
- * `dprMax`, which `renderer.setPixelRatio` applies to a live context. A valve
- * that remounted the Canvas every time frame time wobbled would be worse than
- * no valve at all. Pinned by a test.
+ * The render scale is absent because it changes only the active viewport
+ * within fixed-size targets. A valve that remounted the Canvas every time
+ * frame time wobbled would be worse than no valve at all. Pinned by a test.
  *
  * What can still change the key: the envelope itself (only ever decided once,
  * at boot — `?softwareGl=1` and the capture harness pin their own), the renderer

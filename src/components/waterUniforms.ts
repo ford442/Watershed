@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { getSWEHeightFieldSnapshot } from '../systems/water/SWEHeightField';
 import { useWaterReflectionStore } from '../systems/water/waterReflectionStore';
 import { updateRendererDiagnostics } from '../rendering/rendererState';
+import { useGameStore } from '../systems/GameState';
 import type { MaterialBackend } from '../rendering/materialBackend';
 
 /**
@@ -239,6 +240,9 @@ export function updateFlowingWaterUniforms(
   if (mat.uniforms.reflectionTexture) {
     const { texture, strength } = useWaterReflectionStore.getState();
     mat.uniforms.reflectionTexture.value = texture || getBlackReflectionFallback();
+    if (mat.uniforms.reflectionScale) {
+      mat.uniforms.reflectionScale.value = useGameStore.getState().renderScale;
+    }
     if (mat.uniforms.reflectionStrength) {
       mat.uniforms.reflectionStrength.value = texture ? strength : 0.0;
     }
