@@ -30,6 +30,10 @@ import {
   deriveRendererContextOptions,
 } from './deriveRendererContextOptions';
 import { getSessionGraphicsEnvelope } from './probeGraphicsCapability';
+import { traceCounter, traceName } from '../debug/trace/traceProbe';
+
+const RENDER_SCALE_COUNTER = traceName('renderer quality sync scale');
+const DPR_MAX_COUNTER = traceName('renderer requested DPR max');
 
 export default function RendererQualitySync() {
   const gl = useThree((state) => state.gl);
@@ -55,6 +59,8 @@ export default function RendererQualitySync() {
     // are creation-time attributes and are deliberately NOT touched here — a
     // preset change that moves any of them changes the Canvas key instead.
     applyRendererQualityUpdate(gl, options, scene);
+    traceCounter(RENDER_SCALE_COUNTER, renderScale);
+    traceCounter(DPR_MAX_COUNTER, options.dprMax);
 
     // R3F derives DPR from the Canvas `dpr` prop, which App already updates.
     // Setting it here too keeps any Canvas that forgets the prop (the editor,

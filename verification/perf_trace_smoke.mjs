@@ -178,6 +178,7 @@ function renderScaleSweepMetrics(trace, fromUs, toUs, dimensions) {
     .map((event) => event.dur / 1000);
   const textures = counterSamples(trace, 'renderer textures', fromUs, toUs).map((sample) => sample.value);
   const pixelRatios = counterSamples(trace, 'renderer pixel ratio', fromUs, toUs).map((sample) => sample.value);
+  const requestedDprMax = counterSamples(trace, 'renderer requested DPR max', fromUs, toUs).map((sample) => sample.value);
   const firstBound = counterSamples(trace, 'render targets first bound', fromUs, toUs).map((sample) => sample.value);
   const resizes = counterSamples(trace, 'render target resizes', fromUs, toUs).map((sample) => sample.value);
   return {
@@ -197,6 +198,7 @@ function renderScaleSweepMetrics(trace, fromUs, toUs, dimensions) {
       last: pixelRatios.at(-1) ?? null,
       values: [...new Set(pixelRatios)],
     },
+    requestedDprMax: [...new Set(requestedDprMax)],
     renderTargetsFirstBound: {
       first: firstBound[0] ?? null,
       last: firstBound.at(-1) ?? null,
@@ -250,7 +252,9 @@ async function liveRun() {
   const pageErrors = [];
   try {
     const page = await browser.newPage();
-    await page.setViewport({ width: 480, height: 270 });
+    // At DPR 1 the high preset's ceiling of 2 still resolves to 1, so a
+    // render-scale sweep would leave the drawing buffer unchanged.
+    await page.setViewport({ width: 480, height: 270, deviceScaleFactor: 2 });
     page.on('pageerror', (e) => pageErrors.push(e.message || String(e)));
     console.log(`\n[live] ${BASE_URL}/?${LIVE_QUERY} for ${LIVE_MS / 1000} s`);
     await page.goto(`${BASE_URL}/?${LIVE_QUERY}`, { waitUntil: 'domcontentloaded', timeout: 60_000 });
