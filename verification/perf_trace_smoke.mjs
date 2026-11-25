@@ -280,6 +280,13 @@ async function liveRun() {
         typeof window.__watershedScreenshot?.getRenderScale === 'function',
       { timeout: 60_000 },
     );
+    await page.waitForFunction(
+      () => {
+        const warmup = window.__watershed?.shaderWarmup;
+        return !!warmup && warmup.warm !== null && warmup.warmFrame !== null;
+      },
+      { polling: 'interval', interval: 250, timeout: 120_000 },
+    );
     await sleep(Math.min(10_000, LIVE_MS));
     const bootDimensions = await page.evaluate(() => {
       const canvas = document.querySelector('canvas');
