@@ -111,10 +111,8 @@ export function useRendererBoot(graphicsBoot?: GraphicsBoot): RendererBootState 
     // creation-time attributes; taking them from the negotiated envelope instead
     // of the preset is what makes every preset share one Canvas key.
     envelope: graphicsCapability.envelope,
-    // #419 phase C: LODManager's frame-time valve, multiplying the preset's DPR
-    // ceiling. It moves the `dpr` prop and nothing else — the Canvas key is
-    // derived from creation attributes only, so closing the valve mid-run
-    // cannot remount the Canvas any more than a preset change can.
+    // LODManager's frame-time valve controls the active viewport, not DPR. The
+    // Canvas stays allocated at the preset ceiling for the entire session.
     renderScale,
   });
   // Only creation-time context attributes belong in the Canvas key, and none of

@@ -37,9 +37,8 @@ export interface RendererContextSettings {
    */
   envelope?: GraphicsEnvelope;
   /**
-   * Adaptive render scale — a 0.5–1.0 multiplier on the preset's `dprMax`
-   * (#419 phase C). Driven by measured frame time in `LODManager`, applied live
-   * through the R3F `dpr` prop and `RendererQualitySync`.
+   * Adaptive render scale — a 0.5–1.0 viewport multiplier, independent of the
+   * preset's stable DPR ceiling. Driven by measured frame time in `LODManager`.
    *
    * The preset is the ceiling, this is the valve. Defaults to
    * `RENDER_SCALE_MAX`, so every caller that does not opt in (the editor, the
@@ -50,19 +49,13 @@ export interface RendererContextSettings {
 
 export interface RendererContextOptions {
   /**
-   * Upper bound for Canvas DPR — clamp device pixel ratio to [1, dprMax].
-   *
-   * This is the preset ceiling already multiplied by `renderScale`, so it is
-   * the single number the Canvas and the renderer need. It can drop below 1
-   * when the valve is closed on a `low` / `medium` preset.
+   * Stable upper bound for Canvas DPR. The adaptive render scale must never
+   * change this value; it changes the active viewport inside fixed-size targets.
    */
-  dprMax: number;
+  dprCeiling: number;
   /**
-   * The valve position this `dprMax` was derived with (1.0 = wide open).
-   *
-   * Carried on the options purely so diagnostics and the live-apply path can
-   * report it. It is **not** part of `rendererContextCreationKey()` — a scale
-   * change must never remount the Canvas.
+   * The active viewport multiplier (1.0 = full target). It is **not** part of
+   * `rendererContextCreationKey()` — a scale change must never remount Canvas.
    */
   renderScale: number;
   antialias: boolean;
@@ -140,9 +133,9 @@ export const DESYNCHRONIZED_ENABLED = false;
  * 2.0 is shipping practice (<=2.0 desktop, 1.5–2.0 mobile): DPR 2 is the full
  * retina win, and 3–4x panels are a fill-rate trap rather than a quality tier.
  *
- * This is the quality *ceiling*, not the valve. The valve is the frame-time
- * driven render scale in `renderScale.ts`, which multiplies this ceiling down
- * to 0.5x while the game runs. Raising this constant is still a real
+ * This is the quality *ceiling*, not the valve. The frame-time-driven render
+ * scale in `renderScale.ts` selects a viewport within targets allocated at
+ * this ceiling. Raising this constant is still a real
  * performance decision — a machine that drops frames needs resolution to come
  * *down* under load, not the ceiling to move up — so it must move here, in
  * RENDERER.md, and in the test that pins it.
@@ -161,10 +154,8 @@ export const LOW_SHADOW_MAP_SIZE = 512;
  * produce the same `rendererContextCreationKey()` and the Canvas is never
  * remounted by a quality change.
  *
- * `settings.renderScale` multiplies the preset's DPR ceiling (#419 phase C).
- * It is a live knob like the ceiling itself, so it changes `dprMax` and nothing
- * else: shadow mode, shadow map size, tone mapping, and every creation-time
- * attribute are untouched by the valve.
+ * The preset determines the stable DPR ceiling; `settings.renderScale` controls
+ * the active viewport only and never changes the drawing-buffer dimensions.
  *
  * `high` matches the pre-contract Canvas defaults: soft shadows, DPR clamped to
  * [1, 2], 2048 shadow maps.
@@ -189,11 +180,6 @@ export function deriveRendererContextOptions(
     renderScale,
   };
 
-  // The preset's own ceiling, before the valve. `scaled()` is applied on the way
-  // out so the valve can never be forgotten on one branch of the switch.
-  const scaled = (presetDprMax: number): number =>
-    Math.round(presetDprMax * renderScale * 1000) / 1000;
-
   switch (quality) {
     case 'low':
       // Shadows stay on at a small map (#574 E.2): turning them off would
@@ -201,28 +187,28 @@ export function deriveRendererContextOptions(
       // on the frame the preset moved. A 512 map is a cheap depth pass.
       return {
         ...base,
-        dprMax: scaled(1.0),
+        dprCeiling: 1.0,
         shadowMode: 'soft',
         shadowMapSize: LOW_SHADOW_MAP_SIZE,
       };
     case 'medium':
       return {
         ...base,
-        dprMax: scaled(1.25),
+        dprCeiling: 1.25,
         shadowMode: 'soft',
         shadowMapSize: 1024,
       };
     case 'high':
       return {
         ...base,
-        dprMax: scaled(2),
+        dprCeiling: 2,
         shadowMode: 'soft',
         shadowMapSize: 2048,
       };
     case 'ultra':
       return {
         ...base,
-        dprMax: scaled(Math.min(devicePixelRatio, ULTRA_DPR_CEILING)),
+        dprCeiling: Math.min(devicePixelRatio, ULTRA_DPR_CEILING),
         shadowMode: 'soft',
         // Keyed off the *raw* device pixel ratio, not the capped DPR, and never
         // off the valve: a 3x display still wants the bigger shadow map even
@@ -261,29 +247,23 @@ export function shadowModeToCanvasProp(mode: ShadowMode): false | 'percentage' {
 }
 
 /**
- * Resolved Canvas DPR: clamp device pixel ratio to [1, dprMax].
- *
- * `dprMax` wins when the valve has pushed it below 1 — rendering at 0.6x is the
- * whole point of the valve, and a floor of 1 would silently swallow it.
+ * Resolved Canvas DPR: clamp device pixel ratio to [1, dprCeiling].
  */
 export function resolveCanvasDpr(
-  dprMax: number,
+  dprCeiling: number,
   devicePixelRatio: number
 ): number {
-  return Math.min(Math.max(1, devicePixelRatio), dprMax);
+  return Math.min(Math.max(1, devicePixelRatio), dprCeiling);
 }
 
 /**
  * The R3F Canvas `dpr` prop: `[min, max]`.
  *
- * The minimum used to be the literal 1. With the valve closed on a `low` or
- * `medium` preset, `dprMax` can land below 1, and `[1, 0.6]` is an inverted
- * range — R3F would still clamp to 0.6 today, but only because its clamp
- * happens to apply `max` last. Deriving the minimum keeps the range honest
- * instead of relying on that ordering.
+ * The minimum follows the ceiling for presets below 1x, keeping the range
+ * valid without letting the adaptive render scale change the drawing buffer.
  */
-export function canvasDprRange(dprMax: number): [number, number] {
-  return [Math.min(1, dprMax), dprMax];
+export function canvasDprRange(dprCeiling: number): [number, number] {
+  return [Math.min(1, dprCeiling), dprCeiling];
 }
 
 /**

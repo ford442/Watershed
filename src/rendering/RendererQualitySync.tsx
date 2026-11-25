@@ -25,20 +25,16 @@ import { useEffect } from 'react';
 import { useThree } from '@react-three/fiber';
 import { useQualityPreset, useRenderScale } from '../systems/GameState';
 import { applyRendererQualityUpdate } from './applyRendererContextOptions';
-import {
-  canvasDprRange,
-  deriveRendererContextOptions,
-} from './deriveRendererContextOptions';
+import { deriveRendererContextOptions } from './deriveRendererContextOptions';
 import { getSessionGraphicsEnvelope } from './probeGraphicsCapability';
 import { traceCounter, traceName } from '../debug/trace/traceProbe';
 
 const RENDER_SCALE_COUNTER = traceName('renderer quality sync scale');
-const DPR_MAX_COUNTER = traceName('renderer requested DPR max');
+const DPR_CEILING_COUNTER = traceName('renderer DPR ceiling');
 
 export default function RendererQualitySync() {
   const gl = useThree((state) => state.gl);
   const scene = useThree((state) => state.scene);
-  const setDpr = useThree((state) => state.setDpr);
   const quality = useQualityPreset();
   // The valve moves with frame time, several times more often than the preset
   // ever does — and it lands the same way, on the live renderer.
@@ -60,15 +56,8 @@ export default function RendererQualitySync() {
     // preset change that moves any of them changes the Canvas key instead.
     applyRendererQualityUpdate(gl, options, scene);
     traceCounter(RENDER_SCALE_COUNTER, renderScale);
-    traceCounter(DPR_MAX_COUNTER, options.dprMax);
-
-    // R3F derives DPR from the Canvas `dpr` prop, which App already updates.
-    // Setting it here too keeps any Canvas that forgets the prop (the editor,
-    // future offscreen surfaces) on the same contract — and it is what applies
-    // the render-scale valve to the live context, since `setDpr` reaches
-    // `renderer.setPixelRatio` without touching the Canvas key.
-    setDpr?.(canvasDprRange(options.dprMax));
-  }, [gl, quality, renderScale, scene, setDpr]);
+    traceCounter(DPR_CEILING_COUNTER, options.dprCeiling);
+  }, [gl, quality, renderScale, scene]);
 
   return null;
 }

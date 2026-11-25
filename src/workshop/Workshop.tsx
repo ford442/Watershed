@@ -381,7 +381,7 @@ export default function Workshop({ seed, onClose, onTestRun }: WorkshopProps) {
           <div style={{ flex: 1, minHeight: 0 }}>
             <Canvas
               camera={{ position: [50, 50, 50], fov: 50, up: [0, 1, 0] }}
-              dpr={[1, EDITOR_CONTEXT_OPTIONS.dprMax]}
+              dpr={[1, EDITOR_CONTEXT_OPTIONS.dprCeiling]}
               shadows={shadowModeToCanvasProp(EDITOR_CONTEXT_OPTIONS.shadowMode)}
               gl={async (props) =>
                 createGameRenderer(props, {
