@@ -570,6 +570,7 @@ export function createComposerDriver(
       scenePass.renderScale = renderScale;
       upscalePass.renderScale = renderScale;
       godRaysPass.renderScale = renderScale;
+      upscalePass.enabled = renderScale < 1;
     },
     render() {
       if (disposed) return;
