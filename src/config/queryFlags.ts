@@ -56,6 +56,8 @@ export interface QueryFlags {
   readonly seed: string | null;
   /** `?spawnProfile=1` — segment-mount timing marks. */
   readonly spawnProfile: boolean;
+  /** `?renderScaleSweep=1` — hold adaptive resolution for a scripted valve sweep. */
+  readonly renderScaleSweep: boolean;
   /**
    * `?trace=1` — record the one timeline from boot (#559 D, `debug/trace/`):
    * every thread's spans into a ring, saved as Perfetto JSON from the F3 panel
@@ -141,6 +143,7 @@ export function parseQueryFlags(search: string): QueryFlags {
     river: p.get('river'),
     seed: p.get('seed'),
     spawnProfile: p.get('spawnProfile') === '1',
+    renderScaleSweep: p.get('renderScaleSweep') === '1',
     trace: isOnValue(p.get('trace')),
     warmup: p.get('warmup') === '1',
     debugGlobals: debug || physicsDebug || screenshot,

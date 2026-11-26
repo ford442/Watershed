@@ -34,7 +34,7 @@ describe('deriveRendererContextOptions', () => {
   it('maps low preset to minimal GPU cost', () => {
     const opts = deriveRendererContextOptions('low');
     expect(opts).toMatchObject({
-      dprMax: 1.0,
+      dprCeiling: 1.0,
       shadowMode: 'soft',
       shadowMapSize: 512,
       outputColorSpace: THREE.SRGBColorSpace,
@@ -46,7 +46,7 @@ describe('deriveRendererContextOptions', () => {
   it('maps medium preset to PCF shadows and capped DPR', () => {
     const opts = deriveRendererContextOptions('medium');
     expect(opts).toMatchObject({
-      dprMax: 1.25,
+      dprCeiling: 1.25,
       shadowMode: 'soft',
       shadowMapSize: 1024,
     });
@@ -55,7 +55,7 @@ describe('deriveRendererContextOptions', () => {
   it('maps high preset to pre-contract defaults (soft shadows, DPR 2)', () => {
     const opts = deriveRendererContextOptions('high');
     expect(opts).toMatchObject({
-      dprMax: 2,
+      dprCeiling: 2,
       shadowMode: 'soft',
       shadowMapSize: 2048,
       outputColorSpace: THREE.SRGBColorSpace,
@@ -66,7 +66,7 @@ describe('deriveRendererContextOptions', () => {
   it('maps ultra preset to native DPR and larger shadow maps on retina', () => {
     const opts = deriveRendererContextOptions('ultra', { devicePixelRatio: 2 });
     expect(opts).toMatchObject({
-      dprMax: 2,
+      dprCeiling: 2,
       shadowMode: 'soft',
       shadowMapSize: 4096,
     });
@@ -75,29 +75,29 @@ describe('deriveRendererContextOptions', () => {
   it('maps ultra preset to 2048 shadow map on 1x displays', () => {
     const opts = deriveRendererContextOptions('ultra', { devicePixelRatio: 1 });
     expect(opts.shadowMapSize).toBe(2048);
-    expect(opts.dprMax).toBe(1);
+    expect(opts.dprCeiling).toBe(1);
   });
 
   it('caps ultra DPR at the documented ceiling on high-density displays', () => {
     // Shipping practice is <=2.0 on desktop; 3-4x panels are a fill-rate trap.
     // Move this together with RENDERER.md and the constant, never alone.
     expect(ULTRA_DPR_CEILING).toBe(2.0);
-    expect(deriveRendererContextOptions('ultra', { devicePixelRatio: 3 }).dprMax).toBe(
+    expect(deriveRendererContextOptions('ultra', { devicePixelRatio: 3 }).dprCeiling).toBe(
       ULTRA_DPR_CEILING,
     );
-    expect(deriveRendererContextOptions('ultra', { devicePixelRatio: 4 }).dprMax).toBe(
+    expect(deriveRendererContextOptions('ultra', { devicePixelRatio: 4 }).dprCeiling).toBe(
       ULTRA_DPR_CEILING,
     );
   });
 
   it('leaves ultra DPR untouched below the ceiling', () => {
-    expect(deriveRendererContextOptions('ultra', { devicePixelRatio: 2 }).dprMax).toBe(2);
-    expect(deriveRendererContextOptions('ultra', { devicePixelRatio: 1 }).dprMax).toBe(1);
+    expect(deriveRendererContextOptions('ultra', { devicePixelRatio: 2 }).dprCeiling).toBe(2);
+    expect(deriveRendererContextOptions('ultra', { devicePixelRatio: 1 }).dprCeiling).toBe(1);
   });
 
   it('caps the DPR the Canvas actually resolves, not just the max', () => {
     const opts = deriveRendererContextOptions('ultra', { devicePixelRatio: 3 });
-    expect(resolveCanvasDpr(opts.dprMax, 3)).toBe(ULTRA_DPR_CEILING);
+    expect(resolveCanvasDpr(opts.dprCeiling, 3)).toBe(ULTRA_DPR_CEILING);
   });
 
   it('still picks the 4096 shadow map on retina even though DPR is capped', () => {
@@ -202,7 +202,7 @@ describe('shadowModeToCanvasProp', () => {
 });
 
 describe('resolveCanvasDpr', () => {
-  it('clamps device pixel ratio to [1, dprMax]', () => {
+  it('clamps device pixel ratio to [1, dprCeiling]', () => {
     expect(resolveCanvasDpr(2, 3)).toBe(2);
     expect(resolveCanvasDpr(2, 1.5)).toBe(1.5);
     expect(resolveCanvasDpr(1.25, 2)).toBe(1.25);
@@ -240,7 +240,7 @@ describe('pinned context attributes', () => {
 
   it('never puts a live-applicable property in the creation attributes', () => {
     const attributes = toContextAttributes(deriveRendererContextOptions('high'));
-    expect(attributes).not.toHaveProperty('dprMax');
+    expect(attributes).not.toHaveProperty('dprCeiling');
     expect(attributes).not.toHaveProperty('renderScale');
     expect(attributes).not.toHaveProperty('shadowMode');
     expect(attributes).not.toHaveProperty('shadowMapSize');
@@ -248,42 +248,19 @@ describe('pinned context attributes', () => {
   });
 });
 
-describe('adaptive render scale (#419 phase C)', () => {
-  it('leaves every preset at its documented ceiling when the valve is open', () => {
-    // The valve defaults to wide open, so a caller that never heard of it gets
-    // exactly the pre-#419 numbers.
-    expect(deriveRendererContextOptions('low').dprMax).toBe(1.0);
-    expect(deriveRendererContextOptions('medium').dprMax).toBe(1.25);
-    expect(deriveRendererContextOptions('high').dprMax).toBe(2);
-    expect(deriveRendererContextOptions('high', { renderScale: RENDER_SCALE_MAX }).dprMax).toBe(2);
+describe('adaptive render scale (#574 E.1)', () => {
+  it('keeps the preset DPR ceiling stable at every valve position', () => {
+    for (const renderScale of [RENDER_SCALE_MIN, 0.7, 0.8, RENDER_SCALE_MAX]) {
+      expect(deriveRendererContextOptions('high', { renderScale }).dprCeiling).toBe(2);
+      expect(deriveRendererContextOptions('medium', { renderScale }).dprCeiling).toBe(1.25);
+      expect(deriveRendererContextOptions('low', { renderScale }).dprCeiling).toBe(1);
+    }
     expect(deriveRendererContextOptions('high').renderScale).toBe(RENDER_SCALE_MAX);
   });
 
-  it('multiplies the preset ceiling, it does not replace it', () => {
-    expect(deriveRendererContextOptions('high', { renderScale: 0.5 }).dprMax).toBe(1);
-    expect(deriveRendererContextOptions('high', { renderScale: 0.7 }).dprMax).toBe(1.4);
-    // Off-step values are quantized to the valve's own step first, so the
-    // Canvas never chases a DPR the valve cannot actually hold.
-    expect(deriveRendererContextOptions('high', { renderScale: 0.75 }).dprMax).toBe(1.6);
-    expect(deriveRendererContextOptions('high', { renderScale: 0.75 }).renderScale).toBe(0.8);
-    expect(deriveRendererContextOptions('medium', { renderScale: 0.8 }).dprMax).toBe(1);
-    expect(
-      deriveRendererContextOptions('ultra', { devicePixelRatio: 3, renderScale: 0.5 }).dprMax,
-    ).toBe(ULTRA_DPR_CEILING * 0.5);
-  });
-
-  it('lets the valve take DPR below 1 — that is the point of it', () => {
-    const opts = deriveRendererContextOptions('low', { renderScale: RENDER_SCALE_MIN });
-    expect(opts.dprMax).toBe(0.5);
-    expect(resolveCanvasDpr(opts.dprMax, 2)).toBe(0.5);
-    expect(canvasDprRange(opts.dprMax)).toEqual([0.5, 0.5]);
-  });
-
-  it('keeps the Canvas dpr range the right way round under the valve', () => {
+  it('keeps Canvas DPR ranges based on the ceiling, not the valve', () => {
     expect(canvasDprRange(2)).toEqual([1, 2]);
     expect(canvasDprRange(1.25)).toEqual([1, 1.25]);
-    // [1, 0.6] would be an inverted range; the minimum has to follow the max down.
-    expect(canvasDprRange(0.6)).toEqual([0.6, 0.6]);
   });
 
   it('moves DPR and nothing else', () => {
@@ -300,10 +277,10 @@ describe('adaptive render scale (#419 phase C)', () => {
   });
 
   it('sanitizes a nonsense scale rather than rendering a sub-pixel Canvas', () => {
-    expect(deriveRendererContextOptions('high', { renderScale: 0 }).dprMax).toBe(1);
-    expect(deriveRendererContextOptions('high', { renderScale: -1 }).dprMax).toBe(1);
-    expect(deriveRendererContextOptions('high', { renderScale: 9 }).dprMax).toBe(2);
-    expect(deriveRendererContextOptions('high', { renderScale: Number.NaN }).dprMax).toBe(2);
+    expect(deriveRendererContextOptions('high', { renderScale: 0 }).renderScale).toBe(0.5);
+    expect(deriveRendererContextOptions('high', { renderScale: -1 }).renderScale).toBe(0.5);
+    expect(deriveRendererContextOptions('high', { renderScale: 9 }).renderScale).toBe(1);
+    expect(deriveRendererContextOptions('high', { renderScale: Number.NaN }).renderScale).toBe(1);
   });
 
   it('keeps the editor at full resolution — it is a tool, not a run', () => {

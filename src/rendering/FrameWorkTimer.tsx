@@ -14,10 +14,13 @@ import { attachGpuTimer, beginFrameWork, endFrameWork, getFrameWork } from './fr
 import { updatePerfMetrics } from '../debug/perfMetrics';
 import { attachFrameRenderInfo, type RendererInfoLike } from './frameRenderInfo';
 import { traceCounter, traceName, traceRecording, traceSpanAt } from '../debug/trace/traceProbe';
+import { installRenderTargetTrace, sampleRenderTargetTrace } from './traceRenderTargets';
 
 /** The whole frame's CPU work, and the GPU frame time as a counter track (#559 D). */
 const FRAME_SPAN = traceName('frame');
 const GPU_COUNTER = traceName('gpu frame ms');
+const TEXTURE_COUNTER = traceName('renderer textures');
+const DPR_COUNTER = traceName('renderer pixel ratio');
 
 /** Frames between debug-panel pushes (matches PerfCheckpointMonitor). */
 const PUBLISH_INTERVAL = 30;
@@ -27,6 +30,7 @@ export default function FrameWorkTimer() {
 
   useEffect(() => {
     attachGpuTimer(createGpuTimer(gl));
+    const detachRenderTargetTrace = traceRecording() ? installRenderTargetTrace(gl) : () => {};
     // One `info.reset()` per frame instead of one per render(): the post chain
     // renders 6–9 times a frame and only the last pass used to be counted.
     const detachRenderInfo = attachFrameRenderInfo(gl.info as unknown as RendererInfoLike);
@@ -46,6 +50,10 @@ export default function FrameWorkTimer() {
         traceSpanAt(FRAME_SPAN, frameStart, end);
         // Resolved 2–4 frames late (gpuTimer.ts): the counter lags its frame by that much.
         if (s.gpuMs !== null) traceCounter(GPU_COUNTER, s.gpuMs);
+        const textures = (gl.info as { memory?: { textures?: number } }).memory?.textures;
+        if (typeof textures === 'number') traceCounter(TEXTURE_COUNTER, textures);
+        traceCounter(DPR_COUNTER, gl.getPixelRatio());
+        sampleRenderTargetTrace();
       }
       cpuSum += s.cpuWorkMs;
       frames += 1;
@@ -63,6 +71,7 @@ export default function FrameWorkTimer() {
       removeBefore();
       removeAfter();
       detachRenderInfo();
+      detachRenderTargetTrace();
       attachGpuTimer(null);
     };
   }, [gl]);

@@ -1,21 +1,17 @@
 /**
  * renderScale.ts — the resolution valve (#419 phase C).
  *
- * A **DPR cap** and a **render scale** are two different knobs, and until this
- * module Watershed only had the first. The cap (`dprMax` in
- * `deriveRendererContextOptions`) is a static ceiling: the most pixels a preset
- * will ever ask for. The scale is a valve: a 0.5–1.0 multiplier on that ceiling
- * that moves with measured frame time and trades resolution for headroom while
- * the game runs.
+ * A **DPR ceiling** and a **render scale** are two different knobs. The ceiling
+ * (`dprCeiling` in `deriveRendererContextOptions`) is static: the most pixels a
+ * preset allocates. The scale is a 0.5–1.0 viewport multiplier that moves with
+ * measured frame time and trades resolution for headroom while the game runs.
  *
  * Why it exists now: boot-time graphics negotiation (#405) froze `antialias`,
  * `powerPreference`, and the caveat flag for the session, because they are
  * context-creation attributes and changing one means a new WebGL context — i.e.
  * a Canvas remount, i.e. a Rapier teardown mid-run. The visible trade was that
- * `low` no longer turns MSAA off. The honest fix for MSAA cost on a weak machine
- * is to render fewer pixels, not to tear the context down, and that is exactly
- * what this valve does: it moves `dprMax`, which applies live through the R3F
- * `dpr` prop and `renderer.setPixelRatio`.
+ * `low` no longer turns MSAA off. The valve changes the active viewport inside
+ * fixed-size targets, not the Canvas DPR or drawing-buffer dimensions.
  *
  * Deliberately NOT in `rendererContextCreationKey()`: the scale is a live knob,
  * so a scale change must never be able to remount the Canvas. Pinned by a test.
@@ -28,7 +24,7 @@
 /** Floor of the valve: half the preset's DPR ceiling (a quarter of the pixels). */
 export const RENDER_SCALE_MIN = 0.5;
 
-/** Ceiling of the valve: the preset's own `dprMax`, unmodified. */
+/** Ceiling of the valve: the preset's own maximum viewport scale. */
 export const RENDER_SCALE_MAX = 1.0;
 
 /** Granularity. 0.5 → 1.0 in six positions; one step is ~10% of the pixel work. */

@@ -57,6 +57,7 @@ import { denoise } from 'three/examples/jsm/tsl/display/DenoiseNode.js';
 import { smaa } from 'three/examples/jsm/tsl/display/SMAANode.js';
 import type { PostFrameParams } from './postFrameParams';
 import type { FloatNode, Vec2Node, Vec4Node } from '../../materials/tsl/nodeTypes';
+import { renderScaleViewport } from '../../rendering/renderScaleViewport';
 
 
 /** Which expensive passes are in the graph. Changing it rebuilds the output node. */
@@ -80,6 +81,7 @@ export interface NodePostPipeline {
   /** Push one frame's parameters into the graph's uniforms. */
   update(params: PostFrameParams): void;
   render(): void;
+  setRenderScale(scale: number): void;
   dispose(): void;
 }
 
@@ -101,6 +103,7 @@ const AO_FADE_END = 80;
 export const UNREAL_BLOOM_STRENGTH_SCALE = 3;
 /** Upper bound of the god-ray march; `samples` breaks out earlier (uniformly). */
 const GOD_RAY_MAX_SAMPLES = 64;
+const _sceneViewport = { x: 0, y: 0, width: 1, height: 1 };
 
 export function createNodePostPipeline(
   renderer: WebGPURenderer,
@@ -137,14 +140,40 @@ export function createNodePostPipeline(
     // The scene camera's clip planes; the pipeline quad renders with its own camera.
     cameraNear: uniform(0.1),
     cameraFar: uniform(1000),
+    renderScale: uniform(1),
+    depthTexel: uniform(new THREE.Vector2(1, 1)),
+    depthUvMax: uniform(new THREE.Vector2(1, 1)),
+    ssaoEnabled: uniform(1),
   };
 
   // The scene pass is structure-independent: build it once. Single-sampled,
   // like the JSM composer's targets: GTAO and the god-ray march sample its
   // depth, and a multisampled depth texture cannot be sampled on native WebGPU.
   const scenePass = pass(scene, camera, { samples: 0 });
-  const sceneColor = scenePass.getTextureNode('output');
-  const sceneDepth = scenePass.getTextureNode('depth');
+  const sceneColorTexture = scenePass.getTextureNode('output');
+  const sceneDepthTexture = scenePass.getTextureNode('depth');
+  let renderScale = 1;
+  const setSceneViewport = (scale: number) => {
+    const targetWidth = Math.max(1, renderer.domElement.width);
+    const targetHeight = Math.max(1, renderer.domElement.height);
+    const rect = renderScaleViewport(
+      targetWidth,
+      targetHeight,
+      scale,
+      _sceneViewport,
+      'render-target-pixels',
+    );
+    const width = rect.width;
+    const height = rect.height;
+    scenePass.setViewport(rect.x, rect.y, width, height);
+    scenePass.setScissor(rect.x, rect.y, width, height);
+    u.depthTexel.value.set(1 / targetWidth, 1 / targetHeight);
+    u.depthUvMax.value.set(
+      Math.max(0.5, width - 0.5) / targetWidth,
+      Math.max(0.5, height - 0.5) / targetHeight,
+    );
+  };
+  setSceneViewport(renderScale);
 
   // ── God rays — port of GOD_RAYS_FRAGMENT_SHADER (VolumetricGodRays.tsx) ──
   // Control flow stays uniform (loop bound + break come from uniforms; the
@@ -169,7 +198,12 @@ export function createNodePostPipeline(
       const delta = u.sunScreenPosition.sub(uv);
       const dist = length(delta);
       const direction = normalize(delta.add(vec2(1e-6, 0)));
-      const currentDepth = sceneDepth.sample(uv).r;
+      const currentDepthUv = clamp(
+        uv.mul(u.renderScale),
+        u.depthTexel.mul(0.5),
+        u.depthUvMax,
+      );
+      const currentDepth = sceneDepthTexture.sample(currentDepthUv).r;
       const samplesF = max(float(u.samples), 1.0);
       const sampleDist = u.rayLength.div(samplesF);
       const samplePos = vec2(uv).toVar();
@@ -186,8 +220,13 @@ export function createNodePostPipeline(
           step(0.0, samplePos.x).mul(step(samplePos.x, 1.0)).mul(step(0.0, samplePos.y)).mul(step(samplePos.y, 1.0)),
         );
         const sampleUv = clamp(samplePos, 0.0, 1.0);
-        const luminance = dot(sceneColor.sample(sampleUv).rgb, vec3(0.299, 0.587, 0.114));
-        const sampleDepth = sceneDepth.sample(sampleUv).r;
+        const scaledSampleUv = clamp(
+          sampleUv.mul(u.renderScale),
+          u.depthTexel.mul(0.5),
+          u.depthUvMax,
+        );
+        const luminance = dot(sceneColorTexture.sample(scaledSampleUv).rgb, vec3(0.299, 0.587, 0.114));
+        const sampleDepth = sceneDepthTexture.sample(scaledSampleUv).r;
         const t = u.time;
         const mistNoise = valueNoise(sampleUv.mul(8.0).add(vec2(t.mul(0.02), t.mul(-0.01)))).mul(0.5).add(0.5);
         const depthDelta = abs(sampleDepth.sub(currentDepth));
@@ -276,27 +315,33 @@ export function createNodePostPipeline(
     for (const node of owned) node.dispose();
     owned = [];
 
-    let color: Vec4Node = sceneColor;
+    let color: Vec4Node = sceneColorTexture.sample(
+      clamp(screenUV.mul(u.renderScale), u.depthTexel.mul(0.5), u.depthUvMax),
+    ) as Vec4Node;
 
     if (s.ssao) {
       // Normals are reconstructed from depth (no MRT), so every scene material
       // — including the project's custom node materials — works unchanged.
       // GTAONode / DenoiseNode accept a null normal node (reconstruct from depth);
       // their declared signatures don't, hence the casts.
-      const aoPass = ao(sceneDepth, null as unknown as Node, camera);
+      const aoPass = ao(sceneDepthTexture, null as unknown as Node, camera);
       aoPass.resolutionScale = AO_RESOLUTION_SCALE;
       owned.push(aoPass as unknown as Disposable);
       // Raw GTAO carries its per-pixel noise pattern; the JSM SSAOPass blurs
       // its output too.
-      const aoDenoised = denoise(aoPass.getTextureNode(), sceneDepth, null as unknown as Node, camera);
+      const aoDenoised = denoise(aoPass.getTextureNode(), sceneDepthTexture, null as unknown as Node, camera);
       owned.push(aoDenoised as unknown as Disposable);
       // Depth-reconstructed normals fall apart at range — the sky dome and
       // far walls band into stripes, and GTAO leaves far-plane pixels
       // unwritten — so AO fades out with view distance. It is for contact
       // shadows in crevices, which are all near the player.
-      const viewDistance = perspectiveDepthToViewZ(sceneDepth.r, u.cameraNear, u.cameraFar).negate();
+      const viewDistance = perspectiveDepthToViewZ(sceneDepthTexture.r, u.cameraNear, u.cameraFar).negate();
       const fade = smoothstep(AO_FADE_START, AO_FADE_END, viewDistance);
-      const occlusion = mix((aoDenoised as unknown as Vec4Node).r, float(1), fade);
+      const occlusion = mix(
+        float(1),
+        mix((aoDenoised as unknown as Vec4Node).r, float(1), fade),
+        u.ssaoEnabled,
+      );
       color = vec4(color.rgb.mul(occlusion), color.a);
     }
 
@@ -380,6 +425,12 @@ export function createNodePostPipeline(
 
       u.rainbowIntensity.value = params.rainbow.intensity;
       u.aspectRatio.value = params.rainbow.aspectRatio;
+    },
+    setRenderScale(scale) {
+      renderScale = Number.isFinite(scale) ? Math.min(1, Math.max(0.5, scale)) : 1;
+      u.renderScale.value = renderScale;
+      u.ssaoEnabled.value = renderScale === 1 ? 1 : 0;
+      setSceneViewport(renderScale);
     },
     render() {
       pipeline.render();

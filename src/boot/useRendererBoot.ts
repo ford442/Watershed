@@ -21,7 +21,7 @@ import type { RendererPreference } from '../rendering/types';
 import { requestedMaterialBackend, type MaterialBackend } from '../rendering/materialBackend';
 import { attachGpuLossHandlers, isGpuLossDebugEnabled, simulateGpuLoss } from '../rendering/gpuLossRecovery';
 import { useSettingsStore } from '../systems/settings/useSettingsStore';
-import { useGameStore, useQualityPreset, useRenderScale } from '../systems/GameState';
+import { useGameStore, useQualityPreset } from '../systems/GameState';
 import { parseQualityOverride } from '../utils/qualityOverride';
 import { setDebugTap } from '../debug/debugTaps';
 
@@ -95,7 +95,6 @@ export function useRendererBoot(graphicsBoot?: GraphicsBoot): RendererBootState 
     () => requestedMaterialBackend().backend
   );
   const qualityPreset = useQualityPreset();
-  const renderScale = useRenderScale();
   const { active: assetsLoading } = useProgress();
   const [canvasEpoch, setCanvasEpoch] = useState(0);
   const [canvasReady, setCanvasReady] = useState(false);
@@ -111,11 +110,6 @@ export function useRendererBoot(graphicsBoot?: GraphicsBoot): RendererBootState 
     // creation-time attributes; taking them from the negotiated envelope instead
     // of the preset is what makes every preset share one Canvas key.
     envelope: graphicsCapability.envelope,
-    // #419 phase C: LODManager's frame-time valve, multiplying the preset's DPR
-    // ceiling. It moves the `dpr` prop and nothing else — the Canvas key is
-    // derived from creation attributes only, so closing the valve mid-run
-    // cannot remount the Canvas any more than a preset change can.
-    renderScale,
   });
   // Only creation-time context attributes belong in the Canvas key, and none of
   // them varies with quality any more. DPR, shadow mode, and shadow map size are

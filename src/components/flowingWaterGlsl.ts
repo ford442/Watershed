@@ -210,6 +210,7 @@ export const WATER_FRAGMENT_GLSL = `
     uniform float isPond;
     uniform sampler2D reflectionTexture;
     uniform float reflectionStrength;
+    uniform float reflectionScale;
     // Vortex drain swirl (Hydro-Dam chamber)
     uniform vec3 vortexCenter;
     uniform float vortexRadius;
@@ -379,7 +380,12 @@ export const WATER_FRAGMENT_GLSL = `
         // The mirror camera's image is flipped left/right (rendering/planarMirror.ts).
         reflectionUv.x = 1.0 - reflectionUv.x;
         reflectionUv += normalN.xz * 0.015;
-        vec3 reflection = texture2D(reflectionTexture, clamp(reflectionUv, 0.001, 0.999)).rgb;
+        vec2 activeReflectionUv = clamp(
+          reflectionUv * reflectionScale,
+          vec2(0.001),
+          vec2(max(0.001, reflectionScale - 0.001))
+        );
+        vec3 reflection = texture2D(reflectionTexture, activeReflectionUv).rgb;
         col = mix(col, reflection, fresnel * reflectionStrength * (1.0 - foam * 0.55));
       }
       col = mix(col, edgeHighlight, fresnel * 0.22);

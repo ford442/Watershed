@@ -27,6 +27,7 @@ import { isVisualCaptureMode } from '../../rendering/rendererConfig';
 import { frameWorkMs, getFrameWork, isAdaptiveWindowFull, summarizeFrameWindow } from '../../rendering/frameWork';
 import { isScriptedInputMode } from '../../input/scriptedRun';
 import { spawnProfileEnabled } from '../../terrain/spawnTiming';
+import { queryFlags } from '../../config/queryFlags';
 
 export {
   ADAPTIVE_LIVE_BAND,
@@ -188,7 +189,8 @@ export const LODProvider: React.FC<LODProviderProps> = ({
   // `CAPTURE_ENVELOPE` instead of probing: headless Chromium on SwiftShader is
   // slow by construction, and a valve that closed mid-run would re-render every
   // visual-smoke shot at a different resolution and move every baseline.
-  const [valvePinnedOpen] = useState(() => isVisualCaptureMode());
+  const [renderScaleSweep] = useState(() => queryFlags().renderScaleSweep);
+  const [valvePinnedOpen] = useState(() => isVisualCaptureMode() && !renderScaleSweep);
 
   // The store is the one owner (the menu writes it, so does the adaptive step
   // below). A local copy mirrored by an effect lagged a render behind it.
@@ -198,7 +200,7 @@ export const LODProvider: React.FC<LODProviderProps> = ({
   // by wall-clock frame time would resize the SWE grid at a different frame on
   // every run, so the adaptive step-down is off there (the preset is the page's).
   const [enableAdaptive, setEnableAdaptive] = useState(
-    () => initialAdaptive && !spawnProfileEnabled() && !isScriptedInputMode(),
+    () => initialAdaptive && !renderScaleSweep && !spawnProfileEnabled() && !isScriptedInputMode(),
   );
 
   const config = QUALITY_SETTINGS[quality];
@@ -230,13 +232,14 @@ export const LODProvider: React.FC<LODProviderProps> = ({
   // panel, tests) must hand the player their full resolution back rather than
   // freezing whatever the last measurement happened to be.
   useEffect(() => {
+    if (renderScaleSweep) return;
     if (enableAdaptive && !valvePinnedOpen) return;
     consecutiveSlowTicks.current = 0;
     consecutiveFastTicks.current = 0;
     if (storeRenderScale !== RENDER_SCALE_MAX) {
       storeSetRenderScale(RENDER_SCALE_MAX);
     }
-  }, [enableAdaptive, valvePinnedOpen, storeRenderScale, storeSetRenderScale]);
+  }, [enableAdaptive, renderScaleSweep, valvePinnedOpen, storeRenderScale, storeSetRenderScale]);
 
   useFrame(() => {
     const now = performance.now();

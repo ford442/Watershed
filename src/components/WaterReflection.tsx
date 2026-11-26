@@ -26,6 +26,8 @@ import { sampleWaterSheetY } from '../systems/water/bathymetrySampler';
 import { WATER_LEVEL } from '../constants/game';
 import { frustumReachesBelow, updateMirrorCamera } from '../rendering/planarMirror';
 import { WATER_SURFACE_LAYER } from '../rendering/renderLayers';
+import { renderScaleViewport } from '../rendering/renderScaleViewport';
+import { useRenderScale } from '../systems/GameState';
 
 export interface WaterReflectionProps {
   /** Sheet height above the centreline path (the `sampleWaterSheetY` offset). */
@@ -59,6 +61,9 @@ const _bufferSize = new THREE.Vector2();
 const _targetSize = new THREE.Vector2();
 const _viewport = new THREE.Vector4();
 const _scissor = new THREE.Vector4();
+const _scaledViewport = new THREE.Vector4();
+const _previousTargetViewport = new THREE.Vector4();
+const _previousTargetScissor = new THREE.Vector4();
 const _cameraWorld = new THREE.Vector3();
 
 /**
@@ -70,7 +75,9 @@ export default function WaterReflection({
   updateInterval = 2,
   reflectionStrength = 0.6,
 }: WaterReflectionProps) {
-  const { scene, camera, gl } = useThree();
+  const { scene, camera, gl, size } = useThree();
+  const renderScale = useRenderScale();
+  const targetResolution = useRef(resolution);
   const mirrorCamera = useMemo(() => new THREE.PerspectiveCamera(), []);
   const renderTargetRef = useRef<THREE.WebGLRenderTarget | null>(null);
   const frameCount = useRef(0);
@@ -79,7 +86,7 @@ export default function WaterReflection({
   /** Strength currently published: 0 while the reflection is skipped. */
   const publishedStrength = useRef(0);
 
-  // Create the render target; publish its texture. Sized on the first frame.
+  // Create and size the render target at the stable drawing-buffer ceiling.
   useEffect(() => {
     const rt = new THREE.WebGLRenderTarget(1, 1, {
       minFilter: THREE.LinearFilter,
@@ -87,6 +94,9 @@ export default function WaterReflection({
       format: THREE.RGBAFormat,
       depthBuffer: true,
     });
+    gl.getDrawingBufferSize(_bufferSize);
+    reflectionTargetSize(_bufferSize.x, _bufferSize.y, targetResolution.current, _targetSize);
+    rt.setSize(_targetSize.x, _targetSize.y);
     renderTargetRef.current = rt;
     publishedStrength.current = 0;
 
@@ -99,7 +109,17 @@ export default function WaterReflection({
       rt.dispose();
       renderTargetRef.current = null;
     };
-  }, []);
+  }, [gl]);
+
+  // Browser/CSS resizes may change the ceiling-sized target; valve changes do
+  // not, because they leave the drawing buffer dimensions fixed.
+  useEffect(() => {
+    const renderTarget = renderTargetRef.current;
+    if (!renderTarget) return;
+    gl.getDrawingBufferSize(_bufferSize);
+    reflectionTargetSize(_bufferSize.x, _bufferSize.y, targetResolution.current, _targetSize);
+    renderTarget.setSize(_targetSize.x, _targetSize.y);
+  }, [gl, size.width, size.height]);
 
   // Keep strength in sync when LOD / prop changes without recreating the RT
   useEffect(() => {
@@ -138,11 +158,6 @@ export default function WaterReflection({
     publishStrength(active ? reflectionStrength : 0);
     if (!active) return;
 
-    gl.getDrawingBufferSize(_bufferSize);
-    reflectionTargetSize(_bufferSize.x, _bufferSize.y, resolution, _targetSize);
-    // No-op unless the size changed (three compares before reallocating).
-    renderTarget.setSize(_targetSize.x, _targetSize.y);
-
     // Same layers as the main camera, minus water (no feedback loop).
     mirrorCamera.layers.mask = perspectiveCamera.layers.mask & ~WATER_LAYER_MASK;
 
@@ -152,12 +167,35 @@ export default function WaterReflection({
     const currentScissorTest = gl.getScissorTest();
     gl.getViewport(_viewport);
     gl.getScissor(_scissor);
+    _previousTargetViewport.copy(renderTarget.viewport);
+    _previousTargetScissor.copy(renderTarget.scissor);
+    const previousTargetScissorTest = renderTarget.scissorTest;
     const shadowMap = gl.shadowMap;
     const shadowAutoUpdate = shadowMap.autoUpdate;
     shadowMap.autoUpdate = false;
 
     // Render
     gl.autoClear = true;
+    renderScaleViewport(
+      renderTarget.width,
+      renderTarget.height,
+      renderScale,
+      _scaledViewport,
+      'render-target-pixels',
+    );
+    renderTarget.viewport.set(
+      _scaledViewport.x,
+      _scaledViewport.y,
+      _scaledViewport.z,
+      _scaledViewport.w,
+    );
+    renderTarget.scissor.set(
+      _scaledViewport.x,
+      _scaledViewport.y,
+      _scaledViewport.z,
+      _scaledViewport.w,
+    );
+    renderTarget.scissorTest = true;
     gl.setRenderTarget(renderTarget);
     gl.clear();
     gl.render(scene, mirrorCamera);
@@ -165,6 +203,9 @@ export default function WaterReflection({
     // Restore GL state
     shadowMap.autoUpdate = shadowAutoUpdate;
     gl.setRenderTarget(currentRenderTarget);
+    renderTarget.viewport.copy(_previousTargetViewport);
+    renderTarget.scissor.copy(_previousTargetScissor);
+    renderTarget.scissorTest = previousTargetScissorTest;
     gl.autoClear = currentAutoClear;
     gl.setViewport(_viewport.x, _viewport.y, _viewport.z, _viewport.w);
     gl.setScissor(_scissor.x, _scissor.y, _scissor.z, _scissor.w);

@@ -37,7 +37,7 @@ export function RendererSection({
             deriveRendererContextOptions(qualityPreset, {
               devicePixelRatio: typeof window !== 'undefined' ? window.devicePixelRatio : 1,
               renderScale,
-            }).dprMax,
+            }).dprCeiling,
           )[1]
         } (${qualityPreset})`}
         t={renderScale >= RENDER_SCALE_MAX ? 'ok' : 'warn'}

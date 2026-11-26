@@ -545,13 +545,18 @@ function buildColorNode(
   // same fragment and avoids depending on framebuffer-origin conventions, which
   // differ between the WebGL2 and native WebGPU backends.
   const reflectionTexture = nd(u.reflectionTexture);
+  const reflectionScale = nd(u.reflectionScale);
   const reflectionStrength = nd(u.reflectionStrength);
   const clipPos = cameraProjectionMatrix.mul(cameraViewMatrix).mul(vec4(worldPos, float(1)));
   const screenUv = clipPos.xy.div(max(clipPos.w, float(0.0001))).mul(0.5).add(0.5);
   // The mirror camera's image is flipped left/right (rendering/planarMirror.ts).
   const reflectionUv = vec2(float(1).sub(screenUv.x), screenUv.y).add(normalN.xz.mul(0.015));
   const reflection = reflectionTexture.sample(
-    clamp(reflectionUv, vec2(0.001, 0.001), vec2(0.999, 0.999)),
+    clamp(
+      reflectionUv.mul(reflectionScale),
+      vec2(0.001, 0.001),
+      vec2(max(float(0.001), reflectionScale.sub(0.001))),
+    ),
   ).rgb;
   // GLSL guards with `if (reflectionStrength > 0.001)`; the mask keeps the same
   // cutoff without a branch (strength already scales the mix).

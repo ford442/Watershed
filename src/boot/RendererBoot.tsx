@@ -28,7 +28,7 @@ export function RendererBoot({ boot, onCreated, idle = false, children }: Render
   return (
     <Canvas
       key={boot.canvasKey}
-      dpr={canvasDprRange(contextOptions.dprMax)}
+      dpr={canvasDprRange(contextOptions.dprCeiling)}
       gl={async (props) => {
         // No retry, no fallback ladder: the envelope in `contextOptions` is the
         // one the boot probe already proved this machine will grant, attribute
